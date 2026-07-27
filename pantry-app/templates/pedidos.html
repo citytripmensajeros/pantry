@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Pedidos — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start;">
+  <div><h1>Pedidos</h1><p>Gestión de pedidos por cliente</p></div>
+  <button class="btn btn-primary" onclick="openModal('modal-pedido')">+ Nuevo Pedido</button>
+</div>
+
+<div class="card">
+  {% if pedidos %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Número</th><th>Cliente</th><th>Fecha</th><th>Items</th>
+        <th class="text-right">Costo Total</th>
+        <th class="text-right">A Facturar</th>
+        <th class="text-right">Margen</th>
+        <th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for p in pedidos %}
+      {% set margen = p.total_facturar - p.total_costo %}
+      <tr>
+        <td class="mono" style="font-weight:600">{{ p.numero }}</td>
+        <td>{{ p.cliente_nombre }}</td>
+        <td>{{ p.fecha }}</td>
+        <td>{{ p.num_items or 0 }}</td>
+        <td class="text-right mono">${{ "%.2f"|format(p.total_costo or 0) }}</td>
+        <td class="text-right mono" style="font-weight:600">${{ "%.2f"|format(p.total_facturar or 0) }}</td>
+        <td class="text-right mono {% if margen > 0 %}positive{% else %}negative{% endif %}">
+          ${{ "%.2f"|format(margen) }}
+        </td>
+        <td><span class="badge badge-{{ 'success' if p.status == 'cerrado' else 'warning' }}">{{ p.status }}</span></td>
+        <td><a class="btn btn-sm btn-secondary" href="/pedidos/{{ p.id }}">Ver</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="text-align:center; padding:3rem; color:#888;">
+    <div style="font-size:3rem; margin-bottom:1rem;">📋</div>
+    <p>No hay pedidos aún.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Modal nuevo pedido -->
+<div class="modal-overlay" id="modal-pedido">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-pedido')">×</button>
+    <div class="modal-title">Nuevo Pedido</div>
+    <form method="post" action="/pedidos/nuevo">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Número de pedido</label>
+          <input name="numero" required placeholder="PED-001">
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" name="fecha" required id="fecha-input">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Cliente</label>
+        <select name="cliente_id" required>
+          <option value="">Selecciona...</option>
+          {% for c in clientes %}
+          <option value="{{ c.id }}">{{ c.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Notas (opcional)</label>
+        <textarea name="notas" rows="2" placeholder="Instrucciones especiales..."></textarea>
+      </div>
+      <div class="gap">
+        <button class="btn btn-primary" type="submit">Crear Pedido</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-pedido')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('fecha-input').value = new Date().toISOString().slice(0,10);
+</script>
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <p>Resumen de operaciones CityPantry</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-num">{{ stats.pedidos_abiertos }}</div>
+    <div class="stat-label">Pedidos abiertos</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">{{ stats.facturas_cargadas }}</div>
+    <div class="stat-label">Facturas cargadas</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">{{ stats.clientes }}</div>
+    <div class="stat-label">Clientes</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num">{{ stats.productos }}</div>
+    <div class="stat-label">Productos en catálogo</div>
+  </div>
+</div>
+
+<div class="gap mb1">
+  <a class="btn btn-primary" href="/facturas/upload">⬆ Subir XML</a>
+  <a class="btn btn-secondary" href="/pedidos" onclick="event.preventDefault(); openModal('modal-pedido')">+ Nuevo Pedido</a>
+  <a class="btn btn-amarillo" href="/consulta">📍 Consulta en campo</a>
+</div>
+
+<div class="card">
+  <div class="card-title">Pedidos recientes</div>
+  {% if pedidos_recientes %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Pedido</th><th>Cliente</th><th>Fecha</th><th>Items</th>
+        <th class="text-right">Total a Facturar</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for p in pedidos_recientes %}
+      <tr>
+        <td class="mono">{{ p.numero }}</td>
+        <td>{{ p.cliente_nombre }}</td>
+        <td>{{ p.fecha }}</td>
+        <td>{{ p.num_items or 0 }}</td>
+        <td class="text-right mono">${{ "%.2f"|format(p.total_facturar or 0) }}</td>
+        <td><span class="badge badge-{{ 'success' if p.status == 'cerrado' else 'warning' }}">{{ p.status }}</span></td>
+        <td><a class="btn btn-sm btn-secondary" href="/pedidos/{{ p.id }}">Ver</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">No hay pedidos aún. <a href="/pedidos">Crear el primero</a>.</p>
+  {% endif %}
+</div>
+
+<!-- Modal nuevo pedido -->
+<div class="modal-overlay" id="modal-pedido">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-pedido')">×</button>
+    <div class="modal-title">Nuevo Pedido</div>
+    <form method="post" action="/pedidos/nuevo">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Número de pedido</label>
+          <input name="numero" required placeholder="PED-001">
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" name="fecha" required value="{{ now }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Cliente</label>
+        <select name="cliente_id" required>
+          <option value="">Selecciona un cliente...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Notas</label>
+        <textarea name="notas" rows="2"></textarea>
+      </div>
+      <button class="btn btn-primary" type="submit">Crear Pedido</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// load clientes into modal select
+fetch('/api/productos/buscar?q=').then(()=>{});
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('input[type=date]') && (document.querySelector('input[type=date]').value = new Date().toISOString().slice(0,10));
+  // fetch clientes
+  fetch('/clientes').then(r => r.text()).then(html => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    // we'll just reload; simpler to just go to /pedidos for new pedido
+  });
+});
+</script>
+{% endblock %}

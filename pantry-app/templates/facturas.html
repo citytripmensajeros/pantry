@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Facturas — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start;">
+  <div>
+    <h1>Facturas XML cargadas</h1>
+    <p>Todas las facturas de proveedores procesadas</p>
+  </div>
+  <a class="btn btn-primary" href="/facturas/upload">⬆ Subir XML</a>
+</div>
+
+<div class="card">
+  {% if facturas %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Proveedor</th><th>Fecha</th><th>UUID</th><th>Conceptos</th>
+        <th class="text-right">Total</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for f in facturas %}
+      <tr>
+        <td style="font-weight:600">{{ f.proveedor_nombre or f.proveedor_nombre_cat or '—' }}</td>
+        <td>{{ f.fecha }}</td>
+        <td class="mono text-muted" style="font-size:.75rem">{{ (f.uuid or '')[:20] }}{% if f.uuid %}…{% endif %}</td>
+        <td>{{ f.num_conceptos }}</td>
+        <td class="text-right mono">${{ "%.2f"|format(f.total or 0) }}</td>
+        <td><a class="btn btn-sm btn-secondary" href="/facturas/{{ f.id }}">Ver / Asignar</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="text-align:center; padding:3rem; color:#888;">
+    <div style="font-size:3rem; margin-bottom:1rem;">📭</div>
+    <div>No hay facturas cargadas aún.</div>
+    <a class="btn btn-primary mt1" href="/facturas/upload">Subir primer XML</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Pedido {{ pedido.numero }} — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1>Pedido {{ pedido.numero }}</h1>
+    <p>{{ pedido.cliente_nombre }} · {{ pedido.fecha }}
+      <span class="badge badge-{{ 'success' if pedido.status == 'cerrado' else 'warning' }}" style="margin-left:.5rem">{{ pedido.status }}</span>
+    </p>
+  </div>
+  <div class="gap">
+    {% if pedido.status == 'abierto' %}
+    <button class="btn btn-secondary" onclick="openModal('modal-manual')">+ Agregar manual</button>
+    <a class="btn btn-secondary" href="/facturas">Asignar desde factura</a>
+    <form method="post" action="/pedidos/{{ pedido.id }}/cerrar" onsubmit="return confirm('¿Cerrar este pedido?')">
+      <button class="btn btn-primary" type="submit">✓ Cerrar pedido</button>
+    </form>
+    {% endif %}
+    <a class="btn btn-amarillo" href="/pedidos/{{ pedido.id }}/exportar">⬇ Exportar CSV</a>
+  </div>
+</div>
+
+<!-- Totales -->
+<div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+  <div class="stat-card">
+    <div class="stat-num" style="font-size:1.5rem">${{ "%.2f"|format(totales.costo) }}</div>
+    <div class="stat-label">Costo total (real)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="font-size:1.5rem; color:var(--azul)">${{ "%.2f"|format(totales.facturar) }}</div>
+    <div class="stat-label">Total a facturar</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="font-size:1.5rem; color:var(--success)">${{ "%.2f"|format(totales.margen) }}</div>
+    <div class="stat-label">Margen total</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="font-size:1.5rem; color:var(--success)">{{ "%.1f"|format(totales.margen_pct) }}%</div>
+    <div class="stat-label">% margen</div>
+  </div>
+</div>
+
+<!-- Items del pedido -->
+<div class="card mb1">
+  <div class="card-title">Productos en este pedido</div>
+  {% if items %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Producto</th><th>Proveedor</th><th>Cant.</th>
+        <th class="text-right">Costo real</th>
+        <th class="text-right">Precio base</th>
+        <th class="text-right">Desc. proveedor</th>
+        <th class="text-right">Markup</th>
+        <th class="text-right">P. Cliente</th>
+        <th class="text-right">Total Facturar</th>
+        {% if pedido.status == 'abierto' %}<th></th>{% endif %}
+      </tr></thead>
+      <tbody>
+      {% for item in items %}
+      <tr>
+        <td style="font-weight:500">{{ item.producto_nombre }}</td>
+        <td class="text-muted">{{ item.proveedor_nombre or '—' }}</td>
+        <td>{{ item.cantidad }}</td>
+        <td class="text-right mono">${{ "%.2f"|format(item.costo_real) }}</td>
+        <td class="text-right mono">${{ "%.2f"|format(item.precio_base) }}</td>
+        <td class="text-right mono {% if item.descuento_proveedor > 0 %}positive{% elif item.descuento_proveedor < 0 %}negative{% endif %}">
+          ${{ "%.2f"|format(item.descuento_proveedor) }}
+        </td>
+        <td class="text-right mono">{{ "%.1f"|format(item.markup_pct * 100) }}%</td>
+        <td class="text-right mono">${{ "%.2f"|format(item.precio_cliente) }}</td>
+        <td class="text-right mono" style="font-weight:600">${{ "%.2f"|format(item.total_facturar) }}</td>
+        {% if pedido.status == 'abierto' %}
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="openEditar({{ item.id }}, '{{ item.producto_nombre|replace("'","\\'") }}', {{ item.cantidad }}, {{ item.precio_base }}, {{ item.markup_pct }})">✏</button>
+          <form method="post" action="/pedidos/{{ pedido.id }}/item/{{ item.id }}/eliminar" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
+            <button class="btn btn-sm btn-danger" type="submit">×</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">No hay productos aún. Agrega desde una factura XML o manualmente.</p>
+  {% endif %}
+</div>
+
+<!-- Conceptos sin asignar de facturas recientes -->
+{% if sin_asignar and pedido.status == 'abierto' %}
+<div class="card">
+  <div class="card-title">Conceptos disponibles de facturas (no asignados)</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Descripción</th><th>Proveedor</th><th>Fecha factura</th>
+        <th>Cantidad</th><th class="text-right">Costo real unit.</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for c in sin_asignar %}
+      <tr>
+        <td>{{ c.descripcion }}</td>
+        <td class="text-muted">{{ c.proveedor_nombre }}</td>
+        <td>{{ c.fecha }}</td>
+        <td>{{ c.cantidad }}</td>
+        <td class="text-right mono">${{ "%.2f"|format(c.costo_real_unitario) }}</td>
+        <td>
+          <form method="post" action="/pedidos/{{ pedido.id }}/agregar_concepto">
+            <input type="hidden" name="concepto_id" value="{{ c.id }}">
+            <button class="btn btn-sm btn-primary" type="submit">+ Agregar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Modal agregar manual -->
+<div class="modal-overlay" id="modal-manual">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-manual')">×</button>
+    <div class="modal-title">Agregar producto manual</div>
+    <form method="post" action="/pedidos/{{ pedido.id }}/agregar_manual">
+      <div class="form-group">
+        <label>Producto</label>
+        <input name="producto_nombre" id="input-prod-nombre" required list="prod-list" placeholder="Busca o escribe...">
+        <datalist id="prod-list">
+          {% for p in productos_cat %}
+          <option value="{{ p.nombre }}" data-precio="{{ p.precio_base or '' }}">
+          {% endfor %}
+        </datalist>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cantidad</label>
+          <input type="number" name="cantidad" step="0.01" min="0.01" required value="1">
+        </div>
+        <div class="form-group">
+          <label>Costo real unitario</label>
+          <input type="number" name="costo_real" id="input-costo" step="0.01" min="0" required placeholder="0.00">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Precio base unitario</label>
+          <input type="number" name="precio_base" id="input-base" step="0.01" min="0" required placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Markup %</label>
+          <input type="number" name="markup_pct" step="0.001" value="{{ pedido.markup_default }}" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Proveedor (opcional)</label>
+        <input name="proveedor_nombre" placeholder="Sams, Walmart...">
+      </div>
+      <div class="gap">
+        <button class="btn btn-primary" type="submit">Agregar</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-manual')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal editar item -->
+<div class="modal-overlay" id="modal-editar">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-editar')">×</button>
+    <div class="modal-title">Editar: <span id="edit-nombre"></span></div>
+    <form method="post" id="form-editar">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cantidad</label>
+          <input type="number" name="cantidad" id="edit-cantidad" step="0.01" required>
+        </div>
+        <div class="form-group">
+          <label>Precio base unitario</label>
+          <input type="number" name="precio_base" id="edit-base" step="0.01" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Markup (ej: 0.15 = 15%)</label>
+        <input type="number" name="markup_pct" id="edit-markup" step="0.001" required>
+      </div>
+      <div class="gap">
+        <button class="btn btn-primary" type="submit">Guardar</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-editar')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Autofill precio base desde catálogo
+const inputNombre = document.getElementById('input-prod-nombre');
+const inputBase = document.getElementById('input-base');
+if (inputNombre) {
+  inputNombre.addEventListener('change', () => {
+    const opt = document.querySelector(`#prod-list option[value="${inputNombre.value}"]`);
+    if (opt && opt.dataset.precio) inputBase.value = opt.dataset.precio;
+  });
+}
+
+function openEditar(itemId, nombre, cantidad, precioBase, markupPct) {
+  document.getElementById('edit-nombre').textContent = nombre;
+  document.getElementById('edit-cantidad').value = cantidad;
+  document.getElementById('edit-base').value = precioBase;
+  document.getElementById('edit-markup').value = markupPct;
+  document.getElementById('form-editar').action = `/pedidos/{{ pedido.id }}/item/${itemId}/editar`;
+  openModal('modal-editar');
+}
+</script>
+{% endblock %}

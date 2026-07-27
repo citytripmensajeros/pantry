@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Clientes — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start;">
+  <div><h1>Clientes</h1><p>Configuración de markup por cliente</p></div>
+  <button class="btn btn-primary" onclick="openModal('modal-cliente')">+ Nuevo Cliente</button>
+</div>
+
+<div class="card">
+  {% if clientes %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Cliente</th><th class="text-right">Markup</th>
+        <th class="text-right">Pedidos</th><th class="text-right">Total facturado</th>
+        <th>Notas</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for c in clientes %}
+      <tr>
+        <td style="font-weight:600">{{ c.nombre }}</td>
+        <td class="text-right mono">{{ "%.1f"|format(c.markup_default * 100) }}%</td>
+        <td class="text-right">{{ c.num_pedidos }}</td>
+        <td class="text-right mono">${{ "%.2f"|format(c.total_facturado or 0) }}</td>
+        <td class="text-muted" style="font-size:.85rem">{{ c.notas or '—' }}</td>
+        <td>
+          <button class="btn btn-sm btn-secondary"
+            onclick="openEditar({{ c.id }}, {{ c.markup_default }}, '{{ c.notas or '' }}')">
+            ✏ Editar
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted" style="padding:1rem;">No hay clientes. Agrega el primero.</p>
+  {% endif %}
+</div>
+
+<!-- Modal nuevo cliente -->
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-cliente')">×</button>
+    <div class="modal-title">Nuevo Cliente</div>
+    <form method="post" action="/clientes/nuevo">
+      <div class="form-group">
+        <label>Nombre del cliente</label>
+        <input name="nombre" required placeholder="Ej: WTW MTY">
+      </div>
+      <div class="form-group">
+        <label>Markup default (ej: 0.15 = 15%)</label>
+        <input type="number" name="markup_default" step="0.001" value="0.15" required>
+      </div>
+      <div class="form-group">
+        <label>Notas</label>
+        <textarea name="notas" rows="2"></textarea>
+      </div>
+      <div class="gap">
+        <button class="btn btn-primary" type="submit">Crear</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-cliente')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal editar -->
+<div class="modal-overlay" id="modal-editar">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-editar')">×</button>
+    <div class="modal-title">Editar Cliente</div>
+    <form method="post" id="form-editar">
+      <div class="form-group">
+        <label>Markup default (ej: 0.15 = 15%)</label>
+        <input type="number" name="markup_default" id="edit-markup" step="0.001" required>
+      </div>
+      <div class="form-group">
+        <label>Notas</label>
+        <textarea name="notas" id="edit-notas" rows="2"></textarea>
+      </div>
+      <div class="gap">
+        <button class="btn btn-primary" type="submit">Guardar</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-editar')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function openEditar(id, markup, notas) {
+  document.getElementById('edit-markup').value = markup;
+  document.getElementById('edit-notas').value = notas;
+  document.getElementById('form-editar').action = `/clientes/${id}/editar`;
+  openModal('modal-editar');
+}
+</script>
+{% endblock %}

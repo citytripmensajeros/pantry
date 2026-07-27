@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Consulta en Campo — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>📍 Consulta en Campo</h1>
+  <p>Busca historial de precios de un producto para apoyar decisiones de compra.</p>
+</div>
+
+<form method="get" class="gap mb1">
+  <input name="q" value="{{ q }}" placeholder="Nombre del producto... (ej: Leche Lala, Coca Cola)"
+    style="flex:1; font-size:1rem; padding:.65rem 1rem;"
+    autofocus autocomplete="off">
+  <button class="btn btn-primary" type="submit" style="padding:.65rem 1.5rem;">Buscar</button>
+</form>
+
+{% if q %}
+  {% if resultados %}
+  <div class="card">
+    <div class="card-title">Resultados para "{{ q }}" — {{ resultados|length }} registro(s)</div>
+
+    <!-- Resumen rápido -->
+    {% set precios = resultados | map(attribute='costo_real_unitario') | list %}
+    <div class="stats-grid" style="grid-template-columns: repeat(3,1fr); margin-bottom:1rem;">
+      <div class="stat-card">
+        <div class="stat-num" style="font-size:1.3rem">${{ "%.2f"|format(precios|min) }}</div>
+        <div class="stat-label">Precio mínimo histórico</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" style="font-size:1.3rem">${{ "%.2f"|format(precios|max) }}</div>
+        <div class="stat-label">Precio máximo histórico</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" style="font-size:1.3rem">
+          ${{ "%.2f"|format((precios|sum) / (precios|length)) }}
+        </div>
+        <div class="stat-label">Promedio histórico</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Fecha</th><th>Descripción</th><th>Proveedor</th>
+          <th class="text-right">Costo real unit.</th>
+          <th class="text-right">Desc. en factura</th>
+          <th class="text-right">Precio base catálogo</th>
+          <th>Cliente / Pedido</th>
+        </tr></thead>
+        <tbody>
+        {% for r in resultados %}
+        <tr>
+          <td style="font-weight:600; white-space:nowrap">{{ r.fecha }}</td>
+          <td>{{ r.descripcion }}</td>
+          <td><span class="badge badge-info">{{ r.proveedor_nombre or '—' }}</span></td>
+          <td class="text-right mono" style="font-weight:700; color:var(--azul)">${{ "%.2f"|format(r.costo_real_unitario) }}</td>
+          <td class="text-right mono {% if r.descuento_factura > 0 %}positive{% endif %}">
+            {% if r.descuento_factura > 0 %}-${{ "%.2f"|format(r.descuento_factura) }}{% else %}—{% endif %}
+          </td>
+          <td class="text-right mono">
+            {% if r.precio_base %}${{ "%.2f"|format(r.precio_base) }}{% else %}<span class="text-muted">Sin definir</span>{% endif %}
+          </td>
+          <td class="text-muted" style="font-size:.82rem">
+            {% if r.cliente_nombre %}{{ r.cliente_nombre }} / {{ r.pedido_numero }}{% else %}Sin asignar{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center; padding:2.5rem; color:#888;">
+    <div style="font-size:2.5rem; margin-bottom:.5rem;">🔍</div>
+    <div>No se encontraron registros para <strong>"{{ q }}"</strong></div>
+    <div style="font-size:.85rem; margin-top:.5rem;">Prueba con otra búsqueda o carga más facturas XML.</div>
+  </div>
+  {% endif %}
+{% else %}
+<div class="card" style="text-align:center; padding:3rem; color:#888;">
+  <div style="font-size:3rem; margin-bottom:1rem;">🛒</div>
+  <div style="font-size:1rem; font-weight:600; color:var(--azul);">Escribe el nombre de un producto</div>
+  <div style="font-size:.88rem; margin-top:.5rem;">Verás el historial completo de precios por proveedor y fecha.</div>
+</div>
+{% endif %}
+{% endblock %}

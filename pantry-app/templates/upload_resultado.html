@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Resultado — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Resultado de carga</h1>
+</div>
+<div class="card" style="max-width:600px">
+  {% for r in resultados %}
+  <div style="padding: .75rem 0; border-bottom: 1px solid var(--borde); display:flex; align-items:center; gap:.75rem;">
+    {% if r.status == 'ok' %}
+      <span style="font-size:1.4rem">✅</span>
+      <div>
+        <div style="font-weight:600">{{ r.archivo }}</div>
+        <div class="text-muted" style="font-size:.82rem">{{ r.proveedor }} · {{ r.fecha }} · {{ r.conceptos }} conceptos</div>
+      </div>
+    {% elif r.status == 'duplicada' %}
+      <span style="font-size:1.4rem">⚠️</span>
+      <div>
+        <div style="font-weight:600">{{ r.archivo }}</div>
+        <div class="text-muted" style="font-size:.82rem">Ya estaba cargada (UUID duplicado)</div>
+      </div>
+    {% else %}
+      <span style="font-size:1.4rem">❌</span>
+      <div>
+        <div style="font-weight:600">{{ r.archivo }}</div>
+        <div style="color:var(--danger); font-size:.82rem">{{ r.mensaje }}</div>
+      </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <div class="gap mt1">
+    <a class="btn btn-primary" href="/facturas">Ver facturas</a>
+    <a class="btn btn-secondary" href="/facturas/upload">Subir más</a>
+  </div>
+</div>
+{% endblock %}

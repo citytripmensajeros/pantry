@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Factura — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ factura.proveedor_nombre }}</h1>
+  <p>{{ factura.fecha }} · Total: ${{ "%.2f"|format(factura.total or 0) }}</p>
+</div>
+
+<div class="card">
+  <div class="card-title">Conceptos de la factura — asigna a pedidos</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Descripción</th><th>Cantidad</th><th>Precio unitario (XML)</th>
+        <th>Descuento factura</th><th>Costo real unitario</th>
+        <th>Estado</th><th>Acción</th>
+      </tr></thead>
+      <tbody>
+      {% for c in conceptos %}
+      <tr>
+        <td style="font-weight:500">{{ c.descripcion }}</td>
+        <td>{{ c.cantidad }}</td>
+        <td class="mono">${{ "%.2f"|format(c.valor_unitario) }}</td>
+        <td class="mono {% if c.descuento_factura > 0 %}positive{% endif %}">
+          {% if c.descuento_factura > 0 %}-${{ "%.2f"|format(c.descuento_factura) }}{% else %}—{% endif %}
+        </td>
+        <td class="mono" style="font-weight:600">${{ "%.2f"|format(c.costo_real_unitario) }}</td>
+        <td>
+          {% if c.asignado_item_id %}
+            <span class="badge badge-success">✓ {{ c.pedido_numero }} · {{ c.cliente_nombre }}</span>
+          {% else %}
+            <span class="badge badge-warning">Sin asignar</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if not c.asignado_item_id %}
+          <button class="btn btn-sm btn-primary" onclick="openAsignar({{ c.id }}, '{{ c.descripcion|replace("'", "\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }})">
+            + Asignar
+          </button>
+          {% else %}
+          <a class="btn btn-sm btn-secondary" href="/pedidos/{{ c.pedido_id }}">Ver pedido</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal asignar -->
+<div class="modal-overlay" id="modal-asignar">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-asignar')">×</button>
+    <div class="modal-title">Asignar a pedido</div>
+    <div id="modal-producto-info" style="background:var(--azul-claro); padding:.75rem; border-radius:8px; margin-bottom:1rem; font-size:.88rem;"></div>
+    <form method="post" id="form-asignar">
+      <input type="hidden" name="concepto_id" id="input-concepto-id">
+      <div class="form-group">
+        <label>Pedido</label>
+        <select name="pedido_id" id="select-pedido" required onchange="updatePedidoUrl()">
+          <option value="">Selecciona un pedido abierto...</option>
+          {% for p in pedidos %}
+          <option value="{{ p.id }}">{{ p.numero }} — {{ p.cliente_nombre }} ({{ p.fecha }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <p class="text-muted" style="font-size:.82rem; margin-bottom:1rem;">
+        El precio base y markup se tomarán del catálogo del producto y configuración del cliente. Podrás ajustarlos dentro del pedido.
+      </p>
+      <button class="btn btn-primary" type="submit">Asignar</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function openAsignar(conceptoId, nombre, cantidad, costoReal) {
+  document.getElementById('input-concepto-id').value = conceptoId;
+  document.getElementById('modal-producto-info').innerHTML =
+    `<strong>${nombre}</strong><br>Cantidad: ${cantidad} · Costo real: $${costoReal.toFixed(2)}`;
+  openModal('modal-asignar');
+}
+function updatePedidoUrl() {
+  const pedidoId = document.getElementById('select-pedido').value;
+  if (pedidoId) {
+    document.getElementById('form-asignar').action = `/pedidos/${pedidoId}/agregar_concepto`;
+  }
+}
+</script>
+{% endblock %}

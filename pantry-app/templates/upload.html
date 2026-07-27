@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Subir Facturas XML — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Subir Facturas XML (CFDI)</h1>
+  <p>Sube uno o varios archivos XML de facturas de proveedores. La app extrae automáticamente productos, precios y descuentos.</p>
+</div>
+
+<div class="card" style="max-width:600px">
+  <form method="post" enctype="multipart/form-data" id="upload-form">
+    <div class="form-group">
+      <label>Archivos XML</label>
+      <div id="drop-zone" style="border: 2px dashed var(--borde); border-radius: 10px; padding: 2.5rem; text-align: center; cursor: pointer; transition: border .2s;">
+        <div style="font-size: 2.5rem; margin-bottom: .5rem;">📄</div>
+        <div style="font-weight: 600; color: var(--azul);">Arrastra los XML aquí</div>
+        <div style="color: #888; font-size: .85rem; margin: .5rem 0;">o haz clic para seleccionar</div>
+        <input type="file" name="xmlfiles" id="file-input" multiple accept=".xml" style="display:none">
+        <div id="file-list" style="margin-top: 1rem; font-size: .85rem;"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit" id="btn-upload" disabled>
+      ⬆ Procesar Facturas
+    </button>
+    <a class="btn btn-secondary" href="/facturas">Cancelar</a>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const zone = document.getElementById('drop-zone');
+const input = document.getElementById('file-input');
+const btn = document.getElementById('btn-upload');
+const fileList = document.getElementById('file-list');
+
+zone.addEventListener('click', () => input.click());
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor = 'var(--azul)'; });
+zone.addEventListener('dragleave', () => zone.style.borderColor = 'var(--borde)');
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.style.borderColor = 'var(--borde)';
+  input.files = e.dataTransfer.files;
+  updateList();
+});
+input.addEventListener('change', updateList);
+
+function updateList() {
+  const files = Array.from(input.files);
+  fileList.innerHTML = files.map(f => `<div>✅ ${f.name}</div>`).join('');
+  btn.disabled = files.length === 0;
+}
+</script>
+{% endblock %}

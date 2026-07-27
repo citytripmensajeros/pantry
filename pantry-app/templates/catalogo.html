@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Catálogo de Productos — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Catálogo de Productos</h1>
+  <p>Precios base por producto. Estos se usan al asignar productos a pedidos.</p>
+</div>
+
+<form method="get" class="gap mb1">
+  <input name="q" value="{{ q }}" placeholder="Buscar producto..." style="max-width:300px; flex:1">
+  <button class="btn btn-primary" type="submit">Buscar</button>
+  {% if q %}<a class="btn btn-secondary" href="/catalogo">Ver todos</a>{% endif %}
+</form>
+
+<div class="card">
+  {% if productos %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Producto</th><th>Categoría</th>
+        <th class="text-right">Precio Base</th>
+        <th>Veces comprado</th><th>Última compra</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for p in productos %}
+      <tr>
+        <td style="font-weight:500">{{ p.nombre }}</td>
+        <td class="text-muted">{{ p.categoria or '—' }}</td>
+        <td class="text-right mono" style="font-weight:600">
+          {% if p.precio_base %}${{ "%.2f"|format(p.precio_base) }}{% else %}<span class="badge badge-warning">Sin definir</span>{% endif %}
+        </td>
+        <td>{{ p.veces_pedido }}</td>
+        <td class="text-muted">{{ p.ultima_compra or '—' }}</td>
+        <td>
+          <button class="btn btn-sm btn-secondary"
+            onclick="openEditarProd({{ p.id }}, '{{ p.nombre|replace("'","\\'") }}', {{ p.precio_base or 'null' }}, '{{ p.categoria or '' }}', '{{ p.notas or '' }}')">
+            ✏ Editar
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">No hay productos. Se crean automáticamente al cargar facturas XML.</p>
+  {% endif %}
+</div>
+
+<!-- Modal editar producto -->
+<div class="modal-overlay" id="modal-prod">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-prod')">×</button>
+    <div class="modal-title">Editar: <span id="ep-nombre"></span></div>
+    <form method="post" id="form-prod">
+      <div class="form-group">
+        <label>Precio base unitario ($)</label>
+        <input type="number" name="precio_base" id="ep-base" step="0.01" min="0" placeholder="0.00">
+        <small class="text-muted">Este es el precio ancla — sobre él se calcula el markup al cliente.</small>
+      </div>
+      <div class="form-group">
+        <label>Categoría</label>
+        <input name="categoria" id="ep-cat" placeholder="Bebidas, Snacks, Lácteos...">
+      </div>
+      <div class="form-group">
+        <label>Notas</label>
+        <textarea name="notas" id="ep-notas" rows="2"></textarea>
+      </div>
+      <div class="gap">
+        <button class="btn btn-primary" type="submit">Guardar</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-prod')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function openEditarProd(id, nombre, precioBase, categoria, notas) {
+  document.getElementById('ep-nombre').textContent = nombre;
+  document.getElementById('ep-base').value = precioBase || '';
+  document.getElementById('ep-cat').value = categoria;
+  document.getElementById('ep-notas').value = notas;
+  document.getElementById('form-prod').action = `/catalogo/${id}/editar`;
+  openModal('modal-prod');
+}
+</script>
+{% endblock %}
