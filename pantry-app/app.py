@@ -683,7 +683,8 @@ def api_buscar_productos():
     return jsonify([dict(r) for r in rows])
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────────
-
+# ─── INIT DB AL ARRANCAR ────────────────────────────────────────────────────────
+init_db()
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 5000))
