@@ -100,9 +100,21 @@
   .negative { color: var(--danger); }
 
   @media (max-width: 640px) {
-    nav { gap: .75rem; }
-    nav a { font-size: .8rem; }
-    .container { padding: 1rem; }
+    nav { gap: 0; padding: 0 .75rem; overflow-x: auto; flex-wrap: nowrap; }
+    nav a { font-size: .78rem; padding: .35rem .45rem; white-space: nowrap; }
+    .nav-brand { font-size: .95rem; margin-right: .5rem; white-space: nowrap; }
+    .nav-spacer { display: none; }
+    .container { padding: .75rem; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .stat-num { font-size: 1.5rem; }
+    .form-row { grid-template-columns: 1fr; }
+    .modal { margin: .75rem; width: calc(100% - 1.5rem); }
+    .btn { font-size: .82rem; padding: .45rem .8rem; }
+    table { font-size: .8rem; }
+    th, td { padding: .5rem .6rem; }
+    .page-header { flex-direction: column; align-items: flex-start !important; }
+    .page-header .gap { flex-wrap: wrap; }
+    h1 { font-size: 1.2rem; }
   }
 </style>
 </head>
