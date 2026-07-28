@@ -443,18 +443,23 @@ def agregar_concepto(pedido_id):
     if not concepto or not pedido:
         return jsonify({"error": "No encontrado"}), 404
 
-    prod = get_or_create_producto(db, concepto["descripcion"])
+    # nombre editable — si no se envía, usa el de la factura
+    nombre_custom = request.form.get("nombre_custom", "").strip() or concepto["descripcion"]
+    cantidad_custom = float(request.form.get("cantidad_custom") or concepto["cantidad"])
+    nota_equiv = request.form.get("nota_equivalencia", "").strip()
+
+    prod = get_or_create_producto(db, nombre_custom)
     precio_base = prod["precio_base"] or concepto["costo_real_unitario"]
     markup = pedido["markup_default"]
 
     db.execute("""
         INSERT INTO pedido_items
-        (pedido_id, concepto_id, producto_nombre, cantidad, precio_base, costo_real, markup_pct, proveedor_nombre)
-        VALUES (?,?,?,?,?,?,?,?)
-    """, (pedido_id, concepto_id, concepto["descripcion"], concepto["cantidad"],
-          precio_base, concepto["costo_real_unitario"], markup, concepto["proveedor_nombre"]))
+        (pedido_id, concepto_id, producto_nombre, cantidad, precio_base, costo_real, markup_pct, proveedor_nombre, notas)
+        VALUES (?,?,?,?,?,?,?,?,?)
+    """, (pedido_id, concepto_id, nombre_custom, cantidad_custom,
+          precio_base, concepto["costo_real_unitario"], markup, concepto["proveedor_nombre"], nota_equiv))
     db.commit()
-    flash(f"Producto '{concepto['descripcion']}' agregado al pedido", "success")
+    flash(f"Producto '{nombre_custom}' agregado al pedido", "success")
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
 @app.route("/pedidos/<int:pedido_id>/agregar_manual", methods=["POST"])
@@ -481,12 +486,15 @@ def agregar_manual(pedido_id):
 @app.route("/pedidos/<int:pedido_id>/item/<int:item_id>/editar", methods=["POST"])
 def editar_item(pedido_id, item_id):
     db = get_db()
+    producto_nombre = request.form["producto_nombre"].strip()
     precio_base = float(request.form["precio_base"])
     markup_pct = float(request.form["markup_pct"])
     cantidad = float(request.form["cantidad"])
+    notas = request.form.get("notas", "").strip()
     db.execute("""
-        UPDATE pedido_items SET precio_base=?, markup_pct=?, cantidad=? WHERE id=? AND pedido_id=?
-    """, (precio_base, markup_pct, cantidad, item_id, pedido_id))
+        UPDATE pedido_items SET producto_nombre=?, precio_base=?, markup_pct=?, cantidad=?, notas=?
+        WHERE id=? AND pedido_id=?
+    """, (producto_nombre, precio_base, markup_pct, cantidad, notas, item_id, pedido_id))
     db.commit()
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
@@ -682,9 +690,11 @@ def api_buscar_productos():
                       (f"%{q}%",)).fetchall()
     return jsonify([dict(r) for r in rows])
 
-# ─── MAIN ────────────────────────────────────────────────────────────────────────
-# ─── INIT DB AL ARRANCAR ────────────────────────────────────────────────────────
+# ─── INIT DB AL ARRANCAR (gunicorn + desarrollo) ────────────────────────────────
 init_db()
+
+# ─── MAIN ────────────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 5000))
