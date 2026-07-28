@@ -57,6 +57,22 @@
     <form method="post" id="form-asignar">
       <input type="hidden" name="concepto_id" id="input-concepto-id">
       <div class="form-group">
+        <label>Nombre del producto</label>
+        <input name="nombre_custom" id="input-nombre-custom" required placeholder="Nombre como aparecerá en el pedido">
+        <small class="text-muted">Puedes editarlo — en la factura a veces viene abreviado o con código.</small>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cantidad</label>
+          <input type="number" name="cantidad_custom" id="input-cantidad-custom" step="0.01" min="0.01" required>
+          <small class="text-muted">Ajusta si hay equivalencia de presentación.</small>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Nota de equivalencia (opcional)</label>
+        <input name="nota_equivalencia" placeholder="Ej: 1 caja x200 sobres = 8 cajas x25 sobres">
+      </div>
+      <div class="form-group">
         <label>Pedido</label>
         <select name="pedido_id" id="select-pedido" required onchange="updatePedidoUrl()">
           <option value="">Selecciona un pedido abierto...</option>
@@ -66,7 +82,7 @@
         </select>
       </div>
       <p class="text-muted" style="font-size:.82rem; margin-bottom:1rem;">
-        El precio base y markup se tomarán del catálogo del producto y configuración del cliente. Podrás ajustarlos dentro del pedido.
+        El precio base y markup se tomarán del catálogo. Podrás ajustarlos dentro del pedido.
       </p>
       <button class="btn btn-primary" type="submit">Asignar</button>
     </form>
@@ -77,6 +93,8 @@
 <script>
 function openAsignar(conceptoId, nombre, cantidad, costoReal) {
   document.getElementById('input-concepto-id').value = conceptoId;
+  document.getElementById('input-nombre-custom').value = nombre;
+  document.getElementById('input-cantidad-custom').value = cantidad;
   document.getElementById('modal-producto-info').innerHTML =
     `<strong>${nombre}</strong><br>Cantidad: ${cantidad} · Costo real: $${costoReal.toFixed(2)}`;
   openModal('modal-asignar');
