@@ -59,7 +59,10 @@
       <tbody>
       {% for item in items %}
       <tr>
-        <td style="font-weight:500">{{ item.producto_nombre }}</td>
+        <td style="font-weight:500">
+          {{ item.producto_nombre }}
+          {% if item.notas %}<br><small class="text-muted" style="font-size:.75rem">📝 {{ item.notas }}</small>{% endif %}
+        </td>
         <td class="text-muted">{{ item.proveedor_nombre or '—' }}</td>
         <td>{{ item.cantidad }}</td>
         <td class="text-right mono">${{ "%.2f"|format(item.costo_real) }}</td>
@@ -72,7 +75,7 @@
         <td class="text-right mono" style="font-weight:600">${{ "%.2f"|format(item.total_facturar) }}</td>
         {% if pedido.status == 'abierto' %}
         <td>
-          <button class="btn btn-sm btn-secondary" onclick="openEditar({{ item.id }}, '{{ item.producto_nombre|replace("'","\\'") }}', {{ item.cantidad }}, {{ item.precio_base }}, {{ item.markup_pct }})">✏</button>
+          <button class="btn btn-sm btn-secondary" onclick="openEditar({{ item.id }}, '{{ item.producto_nombre|replace("'","\\'") }}', {{ item.cantidad }}, {{ item.precio_base }}, {{ item.markup_pct }}, '{{ (item.notas or '')|replace("'","\\'") }}')">✏</button>
           <form method="post" action="/pedidos/{{ pedido.id }}/item/{{ item.id }}/eliminar" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
             <button class="btn btn-sm btn-danger" type="submit">×</button>
           </form>
@@ -171,8 +174,12 @@
 <div class="modal-overlay" id="modal-editar">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('modal-editar')">×</button>
-    <div class="modal-title">Editar: <span id="edit-nombre"></span></div>
+    <div class="modal-title">Editar producto</div>
     <form method="post" id="form-editar">
+      <div class="form-group">
+        <label>Nombre del producto</label>
+        <input name="producto_nombre" id="edit-nombre" required>
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label>Cantidad</label>
@@ -186,6 +193,10 @@
       <div class="form-group">
         <label>Markup (ej: 0.15 = 15%)</label>
         <input type="number" name="markup_pct" id="edit-markup" step="0.001" required>
+      </div>
+      <div class="form-group">
+        <label>Nota de equivalencia (opcional)</label>
+        <input name="notas" id="edit-notas" placeholder="Ej: 1 caja x200 sobres = 8 cajas x25 sobres">
       </div>
       <div class="gap">
         <button class="btn btn-primary" type="submit">Guardar</button>
@@ -207,11 +218,12 @@ if (inputNombre) {
   });
 }
 
-function openEditar(itemId, nombre, cantidad, precioBase, markupPct) {
-  document.getElementById('edit-nombre').textContent = nombre;
+function openEditar(itemId, nombre, cantidad, precioBase, markupPct, notas) {
+  document.getElementById('edit-nombre').value = nombre;
   document.getElementById('edit-cantidad').value = cantidad;
   document.getElementById('edit-base').value = precioBase;
   document.getElementById('edit-markup').value = markupPct;
+  document.getElementById('edit-notas').value = notas || '';
   document.getElementById('form-editar').action = `/pedidos/{{ pedido.id }}/item/${itemId}/editar`;
   openModal('modal-editar');
 }
