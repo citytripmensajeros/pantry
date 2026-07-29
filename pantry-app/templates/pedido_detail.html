@@ -16,6 +16,7 @@
       <button class="btn btn-primary" type="submit">✓ Cerrar pedido</button>
     </form>
     {% endif %}
+    <a class="btn btn-secondary" href="/pedidos/{{ pedido.id }}/remision" target="_blank">🖨 Remisión</a>
     <a class="btn btn-amarillo" href="/pedidos/{{ pedido.id }}/exportar">⬇ Exportar CSV</a>
   </div>
 </div>
@@ -67,8 +68,8 @@
         <td>{{ item.cantidad }}</td>
         <td class="text-right mono">${{ "%.2f"|format(item.costo_real) }}</td>
         <td class="text-right mono">${{ "%.2f"|format(item.precio_base) }}</td>
-        <td class="text-right mono {% if item.descuento_proveedor > 0 %}positive{% elif item.descuento_proveedor < 0 %}negative{% endif %}">
-          ${{ "%.2f"|format(item.descuento_proveedor) }}
+        <td class="text-right mono {% if item.descuento_proveedor > 0 %}positive{% endif %}">
+          {% if item.descuento_proveedor > 0 %}+${{ "%.2f"|format(item.descuento_proveedor) }}{% else %}—{% endif %}
         </td>
         <td class="text-right mono">{{ "%.1f"|format(item.markup_pct * 100) }}%</td>
         <td class="text-right mono">${{ "%.2f"|format(item.precio_cliente) }}</td>
@@ -195,8 +196,8 @@
         <input type="number" name="markup_pct" id="edit-markup" step="0.001" required>
       </div>
       <div class="form-group">
-        <label>Nota de equivalencia (opcional)</label>
-        <input name="notas" id="edit-notas" placeholder="Ej: 1 caja x200 sobres = 8 cajas x25 sobres">
+        <label>Nota (opcional)</label>
+        <input name="notas" id="edit-notas" placeholder="Ej: Promo Julio Regalado 3x2, equivalencia presentación...">
       </div>
       <div class="gap">
         <button class="btn btn-primary" type="submit">Guardar</button>
