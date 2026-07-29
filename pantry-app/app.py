@@ -1,5 +1,4 @@
 import os
-import json
 import sqlite3
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -12,7 +11,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "citypantry-dev-key-2024")
 
 DATABASE = os.environ.get("DATABASE_PATH", "pantry.db")
 
-# ─── DB CONNECTION ──────────────────────────────────────────────────────────────
+# ─── DB CONNECTION ───────────────────────────────────────────────────────────────
 
 def get_db():
     db = getattr(g, "_database", None)
@@ -28,7 +27,7 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
-# ─── INIT DB ────────────────────────────────────────────────────────────────────
+# ─── INIT DB ─────────────────────────────────────────────────────────────────────
 
 def init_db():
     db = sqlite3.connect(DATABASE)
@@ -71,7 +70,8 @@ def init_db():
             descuento_factura REAL DEFAULT 0,
             costo_real_unitario REAL NOT NULL,
             importe_total REAL NOT NULL,
-            clave_prod_serv TEXT
+            clave_prod_serv TEXT,
+            tipo TEXT DEFAULT 'producto'
         );
 
         CREATE TABLE IF NOT EXISTS productos (
@@ -109,19 +109,51 @@ def init_db():
             cantidad REAL NOT NULL,
             precio_base REAL NOT NULL,
             costo_real REAL NOT NULL,
-            descuento_proveedor REAL GENERATED ALWAYS AS (precio_base - costo_real) STORED,
             markup_pct REAL NOT NULL DEFAULT 0.15,
-            precio_cliente REAL GENERATED ALWAYS AS (precio_base * (1 + markup_pct)) STORED,
-            total_costo REAL GENERATED ALWAYS AS (costo_real * cantidad) STORED,
-            total_facturar REAL GENERATED ALWAYS AS (precio_base * (1 + markup_pct) * cantidad) STORED,
             proveedor_nombre TEXT,
             notas TEXT
         );
+
+        CREATE VIEW IF NOT EXISTS v_pedido_items AS
+        SELECT
+            pi.id, pi.pedido_id, pi.concepto_id, pi.producto_nombre,
+            pi.cantidad, pi.precio_base, pi.costo_real,
+            pi.markup_pct, pi.proveedor_nombre, pi.notas,
+            (pi.precio_base - pi.costo_real) as descuento_proveedor,
+            (pi.precio_base * (1 + pi.markup_pct)) as precio_cliente,
+            (pi.costo_real * pi.cantidad) as total_costo,
+            (pi.precio_base * (1 + pi.markup_pct) * pi.cantidad) as total_facturar
+        FROM pedido_items pi;
     """)
     db.commit()
     db.close()
 
-# ─── XML CFDI PARSER ────────────────────────────────────────────────────────────
+# ─── MIGRACIONES ─────────────────────────────────────────────────────────────────
+
+def migrate_db():
+    db = sqlite3.connect(DATABASE)
+    migrations = [
+        "ALTER TABLE conceptos_factura ADD COLUMN tipo TEXT DEFAULT 'producto'",
+        """CREATE VIEW IF NOT EXISTS v_pedido_items AS
+        SELECT
+            pi.id, pi.pedido_id, pi.concepto_id, pi.producto_nombre,
+            pi.cantidad, pi.precio_base, pi.costo_real,
+            pi.markup_pct, pi.proveedor_nombre, pi.notas,
+            (pi.precio_base - pi.costo_real) as descuento_proveedor,
+            (pi.precio_base * (1 + pi.markup_pct)) as precio_cliente,
+            (pi.costo_real * pi.cantidad) as total_costo,
+            (pi.precio_base * (1 + pi.markup_pct) * pi.cantidad) as total_facturar
+        FROM pedido_items pi""",
+    ]
+    for sql in migrations:
+        try:
+            db.execute(sql)
+            db.commit()
+        except Exception:
+            pass
+    db.close()
+
+# ─── XML CFDI PARSER ─────────────────────────────────────────────────────────────
 
 CFDI_NS = {
     "3": "http://www.sat.gob.mx/cfd/3",
@@ -129,13 +161,11 @@ CFDI_NS = {
 }
 
 def parse_cfdi(xml_content):
-    """Parse Mexican CFDI XML and return structured data."""
     try:
         root = ET.fromstring(xml_content)
     except ET.ParseError as e:
         raise ValueError(f"XML inválido: {e}")
 
-    # detect namespace version
     tag = root.tag
     ns = None
     for ver, uri in CFDI_NS.items():
@@ -143,37 +173,28 @@ def parse_cfdi(xml_content):
             ns = {"cfdi": uri}
             break
     if ns is None:
-        # try without namespace
         ns = {"cfdi": ""}
 
     def find(el, path):
-        try:
-            return el.find(path, ns)
-        except Exception:
-            return None
+        try: return el.find(path, ns)
+        except: return None
 
     def findall(el, path):
-        try:
-            return el.findall(path, ns)
-        except Exception:
-            return []
+        try: return el.findall(path, ns)
+        except: return []
 
     def attr(el, name, default=""):
-        if el is None:
-            return default
+        if el is None: return default
         return el.get(name, default)
 
     emisor = find(root, "cfdi:Emisor")
-    receptor = find(root, "cfdi:Receptor")
-
     proveedor_rfc = attr(emisor, "Rfc")
     proveedor_nombre = attr(emisor, "Nombre")
     fecha_str = attr(root, "Fecha") or attr(root, "fecha")
 
-    # parse date
     try:
         fecha = datetime.fromisoformat(fecha_str[:10]).date().isoformat()
-    except Exception:
+    except:
         fecha = datetime.today().date().isoformat()
 
     uuid = ""
@@ -197,10 +218,7 @@ def parse_cfdi(xml_content):
             descripcion = attr(c, "Descripcion") or attr(c, "descripcion", "Sin descripción")
             unidad = attr(c, "ClaveUnidad") or attr(c, "Unidad", "")
             clave = attr(c, "ClaveProdServ", "")
-
-            # costo real unitario = (importe - descuento) / cantidad
-            costo_real = (importe - descuento) / cantidad if cantidad else (valor_unitario)
-
+            costo_real = (importe - descuento) / cantidad if cantidad else valor_unitario
             conceptos.append({
                 "descripcion": descripcion,
                 "cantidad": cantidad,
@@ -222,7 +240,7 @@ def parse_cfdi(xml_content):
         "conceptos": conceptos,
     }
 
-# ─── HELPERS ────────────────────────────────────────────────────────────────────
+# ─── HELPERS ─────────────────────────────────────────────────────────────────────
 
 def get_or_create_proveedor(db, rfc, nombre):
     row = db.execute("SELECT id FROM proveedores WHERE rfc = ?", (rfc,)).fetchone()
@@ -241,7 +259,7 @@ def get_or_create_producto(db, nombre):
     row = db.execute("SELECT id, precio_base FROM productos WHERE nombre = ?", (nombre,)).fetchone()
     return dict(row)
 
-# ─── ROUTES ─────────────────────────────────────────────────────────────────────
+# ─── ROUTES ──────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
@@ -258,20 +276,18 @@ def index():
                SUM(pi.total_facturar) as total_facturar
         FROM pedidos p
         JOIN clientes c ON p.cliente_id = c.id
-        LEFT JOIN pedido_items pi ON pi.pedido_id = p.id
-        GROUP BY p.id
-        ORDER BY p.fecha DESC LIMIT 5
+        LEFT JOIN v_pedido_items pi ON pi.pedido_id = p.id
+        GROUP BY p.id ORDER BY p.fecha DESC LIMIT 5
     """).fetchall()
     return render_template("index.html", stats=stats, pedidos_recientes=pedidos_recientes)
 
-# ── FACTURAS / XML ───────────────────────────────────────────────────────────────
+# ── FACTURAS / XML ────────────────────────────────────────────────────────────────
 
 @app.route("/facturas")
 def facturas():
     db = get_db()
     rows = db.execute("""
-        SELECT f.*, p.nombre as proveedor_nombre_cat,
-               COUNT(c.id) as num_conceptos
+        SELECT f.*, p.nombre as proveedor_nombre_cat, COUNT(c.id) as num_conceptos
         FROM facturas f
         LEFT JOIN proveedores p ON f.proveedor_id = p.id
         LEFT JOIN conceptos_factura c ON c.factura_id = f.id
@@ -289,26 +305,19 @@ def upload_factura():
             if not f.filename:
                 continue
             try:
-                content = f.read().decode("utf-8-sig")  # handle BOM
+                content = f.read().decode("utf-8-sig")
                 data = parse_cfdi(content)
-
-                # proveedor
                 prov_id = get_or_create_proveedor(db, data["proveedor_rfc"], data["proveedor_nombre"])
-
-                # factura
                 existing = db.execute("SELECT id FROM facturas WHERE uuid=?", (data["uuid"],)).fetchone()
                 if existing and data["uuid"]:
                     resultados.append({"archivo": f.filename, "status": "duplicada", "uuid": data["uuid"]})
                     continue
-
                 cur = db.execute("""
                     INSERT INTO facturas (uuid, proveedor_id, proveedor_nombre, fecha, subtotal, total, xml_raw)
                     VALUES (?,?,?,?,?,?,?)
                 """, (data["uuid"], prov_id, data["proveedor_nombre"],
                       data["fecha"], data["subtotal"], data["total"], content))
                 factura_id = cur.lastrowid
-
-                # conceptos
                 for c in data["conceptos"]:
                     db.execute("""
                         INSERT INTO conceptos_factura
@@ -318,22 +327,16 @@ def upload_factura():
                     """, (factura_id, c["descripcion"], c["cantidad"], c["unidad"],
                           c["valor_unitario"], c["descuento_factura"], c["costo_real_unitario"],
                           c["importe_total"], c["clave_prod_serv"]))
-                    # auto-create producto en catálogo si no existe
                     get_or_create_producto(db, c["descripcion"])
-
                 db.commit()
                 resultados.append({
-                    "archivo": f.filename,
-                    "status": "ok",
+                    "archivo": f.filename, "status": "ok",
                     "proveedor": data["proveedor_nombre"],
-                    "fecha": data["fecha"],
-                    "conceptos": len(data["conceptos"])
+                    "fecha": data["fecha"], "conceptos": len(data["conceptos"])
                 })
             except Exception as e:
                 resultados.append({"archivo": f.filename, "status": "error", "mensaje": str(e)})
-
         return render_template("upload_resultado.html", resultados=resultados)
-
     return render_template("upload.html")
 
 @app.route("/facturas/<int:factura_id>")
@@ -359,7 +362,23 @@ def factura_detail(factura_id):
     """).fetchall()
     return render_template("factura_detail.html", factura=factura, conceptos=conceptos, pedidos=pedidos)
 
-# ── PEDIDOS ──────────────────────────────────────────────────────────────────────
+@app.route("/facturas/concepto/<int:concepto_id>/tipo", methods=["POST"])
+def cambiar_tipo_concepto(concepto_id):
+    db = get_db()
+    tipo = request.form.get("tipo", "producto")
+    concepto = db.execute(
+        "SELECT cf.*, f.id as fid FROM conceptos_factura cf JOIN facturas f ON cf.factura_id=f.id WHERE cf.id=?",
+        (concepto_id,)).fetchone()
+    if not concepto:
+        flash("Concepto no encontrado", "error")
+        return redirect(url_for("facturas"))
+    db.execute("UPDATE conceptos_factura SET tipo=? WHERE id=?", (tipo, concepto_id))
+    db.commit()
+    label = "gasto operativo" if tipo == "gasto" else "producto"
+    flash(f"Concepto marcado como {label}", "success")
+    return redirect(url_for("factura_detail", factura_id=concepto["fid"]))
+
+# ── PEDIDOS ───────────────────────────────────────────────────────────────────────
 
 @app.route("/pedidos")
 def pedidos():
@@ -371,7 +390,7 @@ def pedidos():
                COALESCE(SUM(pi.total_facturar),0) as total_facturar
         FROM pedidos p
         JOIN clientes c ON p.cliente_id = c.id
-        LEFT JOIN pedido_items pi ON pi.pedido_id = p.id
+        LEFT JOIN v_pedido_items pi ON pi.pedido_id = p.id
         GROUP BY p.id ORDER BY p.fecha DESC
     """).fetchall()
     clientes = db.execute("SELECT * FROM clientes ORDER BY nombre").fetchall()
@@ -380,15 +399,12 @@ def pedidos():
 @app.route("/pedidos/nuevo", methods=["POST"])
 def nuevo_pedido():
     db = get_db()
-    numero = request.form["numero"]
-    cliente_id = request.form["cliente_id"]
-    fecha = request.form["fecha"]
-    notas = request.form.get("notas", "")
     try:
         db.execute("INSERT INTO pedidos (numero, cliente_id, fecha, notas) VALUES (?,?,?,?)",
-                   (numero, cliente_id, fecha, notas))
+                   (request.form["numero"], request.form["cliente_id"],
+                    request.form["fecha"], request.form.get("notas", "")))
         db.commit()
-        flash(f"Pedido {numero} creado", "success")
+        flash(f"Pedido {request.form['numero']} creado", "success")
     except Exception as e:
         flash(f"Error: {e}", "error")
     return redirect(url_for("pedidos"))
@@ -398,25 +414,24 @@ def pedido_detail(pedido_id):
     db = get_db()
     pedido = db.execute("""
         SELECT p.*, c.nombre as cliente_nombre, c.markup_default
-        FROM pedidos p JOIN clientes c ON p.cliente_id = c.id
-        WHERE p.id=?
+        FROM pedidos p JOIN clientes c ON p.cliente_id = c.id WHERE p.id=?
     """, (pedido_id,)).fetchone()
     if not pedido:
         flash("Pedido no encontrado", "error")
         return redirect(url_for("pedidos"))
     items = db.execute("""
-        SELECT pi.*, f.fecha as factura_fecha, f.proveedor_nombre
-        FROM pedido_items pi
+        SELECT pi.*, f.fecha as factura_fecha
+        FROM v_pedido_items pi
         LEFT JOIN conceptos_factura cf ON pi.concepto_id = cf.id
         LEFT JOIN facturas f ON cf.factura_id = f.id
         WHERE pi.pedido_id = ?
     """, (pedido_id,)).fetchall()
-    # conceptos sin asignar (de facturas recientes)
     sin_asignar = db.execute("""
         SELECT cf.*, f.fecha, f.proveedor_nombre, f.id as factura_id
         FROM conceptos_factura cf
         JOIN facturas f ON cf.factura_id = f.id
         WHERE cf.id NOT IN (SELECT concepto_id FROM pedido_items WHERE concepto_id IS NOT NULL)
+        AND (cf.tipo IS NULL OR cf.tipo = 'producto')
         ORDER BY f.fecha DESC, cf.descripcion
     """).fetchall()
     productos_cat = db.execute("SELECT * FROM productos ORDER BY nombre").fetchall()
@@ -425,10 +440,7 @@ def pedido_detail(pedido_id):
         "facturar": sum(i["total_facturar"] for i in items),
         "margen": sum((i["total_facturar"] - i["total_costo"]) for i in items),
     }
-    if totales["facturar"] > 0:
-        totales["margen_pct"] = totales["margen"] / totales["facturar"] * 100
-    else:
-        totales["margen_pct"] = 0
+    totales["margen_pct"] = (totales["margen"] / totales["facturar"] * 100) if totales["facturar"] > 0 else 0
     return render_template("pedido_detail.html", pedido=pedido, items=items,
                            sin_asignar=sin_asignar, productos_cat=productos_cat, totales=totales)
 
@@ -443,7 +455,6 @@ def agregar_concepto(pedido_id):
     if not concepto or not pedido:
         return jsonify({"error": "No encontrado"}), 404
 
-    # nombre editable — si no se envía, usa el de la factura
     nombre_custom = request.form.get("nombre_custom", "").strip() or concepto["descripcion"]
     cantidad_custom = float(request.form.get("cantidad_custom") or concepto["cantidad"])
     nota_equiv = request.form.get("nota_equivalencia", "").strip()
@@ -473,7 +484,6 @@ def agregar_manual(pedido_id):
     precio_base = float(request.form["precio_base"])
     markup = float(request.form.get("markup_pct", pedido["markup_default"]))
     proveedor = request.form.get("proveedor_nombre", "")
-
     db.execute("""
         INSERT INTO pedido_items
         (pedido_id, producto_nombre, cantidad, precio_base, costo_real, markup_pct, proveedor_nombre)
@@ -486,15 +496,15 @@ def agregar_manual(pedido_id):
 @app.route("/pedidos/<int:pedido_id>/item/<int:item_id>/editar", methods=["POST"])
 def editar_item(pedido_id, item_id):
     db = get_db()
-    producto_nombre = request.form["producto_nombre"].strip()
-    precio_base = float(request.form["precio_base"])
-    markup_pct = float(request.form["markup_pct"])
-    cantidad = float(request.form["cantidad"])
-    notas = request.form.get("notas", "").strip()
     db.execute("""
         UPDATE pedido_items SET producto_nombre=?, precio_base=?, markup_pct=?, cantidad=?, notas=?
         WHERE id=? AND pedido_id=?
-    """, (producto_nombre, precio_base, markup_pct, cantidad, notas, item_id, pedido_id))
+    """, (request.form["producto_nombre"].strip(),
+          float(request.form["precio_base"]),
+          float(request.form["markup_pct"]),
+          float(request.form["cantidad"]),
+          request.form.get("notas", "").strip(),
+          item_id, pedido_id))
     db.commit()
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
@@ -513,6 +523,24 @@ def cerrar_pedido(pedido_id):
     flash("Pedido cerrado", "success")
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
+@app.route("/pedidos/<int:pedido_id>/remision")
+def remision_pedido(pedido_id):
+    db = get_db()
+    pedido = db.execute("""
+        SELECT p.*, c.nombre as cliente_nombre FROM pedidos p
+        JOIN clientes c ON p.cliente_id = c.id WHERE p.id=?
+    """, (pedido_id,)).fetchone()
+    if not pedido:
+        flash("Pedido no encontrado", "error")
+        return redirect(url_for("pedidos"))
+    items = db.execute("""
+        SELECT pi.producto_nombre, pi.cantidad
+        FROM pedido_items pi
+        WHERE pi.pedido_id = ?
+        ORDER BY pi.id
+    """, (pedido_id,)).fetchall()
+    return render_template("remision.html", pedido=pedido, items=items)
+
 @app.route("/pedidos/<int:pedido_id>/exportar")
 def exportar_pedido(pedido_id):
     db = get_db()
@@ -522,7 +550,7 @@ def exportar_pedido(pedido_id):
     """, (pedido_id,)).fetchone()
     items = db.execute("""
         SELECT pi.*, f.fecha as factura_fecha
-        FROM pedido_items pi
+        FROM v_pedido_items pi
         LEFT JOIN conceptos_factura cf ON pi.concepto_id = cf.id
         LEFT JOIN facturas f ON cf.factura_id = f.id
         WHERE pi.pedido_id=?
@@ -535,7 +563,7 @@ def exportar_pedido(pedido_id):
     writer.writerow(["Fecha", pedido["fecha"]])
     writer.writerow([])
     writer.writerow(["Producto", "Proveedor", "Cantidad", "Costo Real Unit.",
-                     "Precio Base Unit.", "Descuento Proveedor Unit.",
+                     "Precio Base Unit.", "Margen Capturado Unit.",
                      "Markup %", "Precio Cliente Unit.", "Total Costo", "Total a Facturar"])
     for item in items:
         writer.writerow([
@@ -564,7 +592,7 @@ def exportar_pedido(pedido_id):
         download_name=f"pedido_{pedido['numero']}_{pedido['cliente_nombre']}.csv"
     )
 
-# ── CLIENTES ─────────────────────────────────────────────────────────────────────
+# ── CLIENTES ──────────────────────────────────────────────────────────────────────
 
 @app.route("/clientes")
 def clientes():
@@ -574,7 +602,7 @@ def clientes():
                COALESCE(SUM(pi.total_facturar),0) as total_facturado
         FROM clientes c
         LEFT JOIN pedidos p ON p.cliente_id = c.id
-        LEFT JOIN pedido_items pi ON pi.pedido_id = p.id
+        LEFT JOIN v_pedido_items pi ON pi.pedido_id = p.id
         GROUP BY c.id ORDER BY c.nombre
     """).fetchall()
     return render_template("clientes.html", clientes=rows)
@@ -582,14 +610,12 @@ def clientes():
 @app.route("/clientes/nuevo", methods=["POST"])
 def nuevo_cliente():
     db = get_db()
-    nombre = request.form["nombre"]
-    markup = float(request.form.get("markup_default", 0.15))
-    notas = request.form.get("notas", "")
     try:
         db.execute("INSERT INTO clientes (nombre, markup_default, notas) VALUES (?,?,?)",
-                   (nombre, markup, notas))
+                   (request.form["nombre"], float(request.form.get("markup_default", 0.15)),
+                    request.form.get("notas", "")))
         db.commit()
-        flash(f"Cliente '{nombre}' creado", "success")
+        flash(f"Cliente '{request.form['nombre']}' creado", "success")
     except Exception as e:
         flash(f"Error: {e}", "error")
     return redirect(url_for("clientes"))
@@ -597,55 +623,59 @@ def nuevo_cliente():
 @app.route("/clientes/<int:cliente_id>/editar", methods=["POST"])
 def editar_cliente(cliente_id):
     db = get_db()
-    markup = float(request.form.get("markup_default", 0.15))
-    notas = request.form.get("notas", "")
-    db.execute("UPDATE clientes SET markup_default=?, notas=? WHERE id=?", (markup, notas, cliente_id))
+    db.execute("UPDATE clientes SET markup_default=?, notas=? WHERE id=?",
+               (float(request.form.get("markup_default", 0.15)),
+                request.form.get("notas", ""), cliente_id))
     db.commit()
     flash("Cliente actualizado", "success")
     return redirect(url_for("clientes"))
 
-# ── CATÁLOGO DE PRODUCTOS ────────────────────────────────────────────────────────
+# ── CATÁLOGO ──────────────────────────────────────────────────────────────────────
 
 @app.route("/catalogo")
 def catalogo():
     db = get_db()
     q = request.args.get("q", "")
+    sql = """
+        SELECT p.*,
+               (SELECT COUNT(*) FROM pedido_items pi WHERE pi.producto_nombre = p.nombre) as veces_pedido,
+               (SELECT MAX(f.fecha) FROM pedido_items pi
+                JOIN conceptos_factura cf ON pi.concepto_id = cf.id
+                JOIN facturas f ON cf.factura_id = f.id
+                WHERE pi.producto_nombre = p.nombre) as ultima_compra
+        FROM productos p
+        {}ORDER BY p.nombre
+    """
     if q:
-        rows = db.execute("""
-            SELECT p.*,
-                   (SELECT COUNT(*) FROM pedido_items pi WHERE pi.producto_nombre = p.nombre) as veces_pedido,
-                   (SELECT MAX(f.fecha) FROM pedido_items pi
-                    JOIN conceptos_factura cf ON pi.concepto_id = cf.id
-                    JOIN facturas f ON cf.factura_id = f.id
-                    WHERE pi.producto_nombre = p.nombre) as ultima_compra
-            FROM productos p
-            WHERE p.nombre LIKE ?
-            ORDER BY p.nombre
-        """, (f"%{q}%",)).fetchall()
+        rows = db.execute(sql.format("WHERE p.nombre LIKE ? "), (f"%{q}%",)).fetchall()
     else:
-        rows = db.execute("""
-            SELECT p.*,
-                   (SELECT COUNT(*) FROM pedido_items pi WHERE pi.producto_nombre = p.nombre) as veces_pedido,
-                   (SELECT MAX(f.fecha) FROM pedido_items pi
-                    JOIN conceptos_factura cf ON pi.concepto_id = cf.id
-                    JOIN facturas f ON cf.factura_id = f.id
-                    WHERE pi.producto_nombre = p.nombre) as ultima_compra
-            FROM productos p ORDER BY p.nombre
-        """).fetchall()
+        rows = db.execute(sql.format("")).fetchall()
     return render_template("catalogo.html", productos=rows, q=q)
 
 @app.route("/catalogo/<int:producto_id>/editar", methods=["POST"])
 def editar_producto(producto_id):
     db = get_db()
+    nombre_nuevo = request.form.get("nombre", "").strip()
     precio_base_nuevo = request.form.get("precio_base")
     categoria = request.form.get("categoria", "")
     notas = request.form.get("notas", "")
 
+    prod = db.execute("SELECT * FROM productos WHERE id=?", (producto_id,)).fetchone()
+    if not prod:
+        flash("Producto no encontrado", "error")
+        return redirect(url_for("catalogo"))
+
+    if nombre_nuevo and nombre_nuevo != prod["nombre"]:
+        existe = db.execute("SELECT id FROM productos WHERE nombre=? AND id!=?",
+                            (nombre_nuevo, producto_id)).fetchone()
+        if existe:
+            flash(f"Ya existe un producto con el nombre '{nombre_nuevo}'", "error")
+            return redirect(url_for("catalogo"))
+        db.execute("UPDATE productos SET nombre=? WHERE id=?", (nombre_nuevo, producto_id))
+
     if precio_base_nuevo:
         precio_base_nuevo = float(precio_base_nuevo)
-        # guardar historial
-        prod = db.execute("SELECT precio_base FROM productos WHERE id=?", (producto_id,)).fetchone()
-        if prod and prod["precio_base"] != precio_base_nuevo:
+        if prod["precio_base"] != precio_base_nuevo:
             db.execute("INSERT INTO precio_base_historial (producto_id, precio_base) VALUES (?,?)",
                        (producto_id, precio_base_nuevo))
         db.execute("UPDATE productos SET precio_base=?, categoria=?, notas=?, actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
@@ -653,11 +683,12 @@ def editar_producto(producto_id):
     else:
         db.execute("UPDATE productos SET categoria=?, notas=? WHERE id=?",
                    (categoria, notas, producto_id))
+
     db.commit()
     flash("Producto actualizado", "success")
     return redirect(url_for("catalogo"))
 
-# ── CONSULTA EN CAMPO ────────────────────────────────────────────────────────────
+# ── CONSULTA EN CAMPO ─────────────────────────────────────────────────────────────
 
 @app.route("/consulta")
 def consulta():
@@ -682,6 +713,28 @@ def consulta():
         """, (f"%{q}%",)).fetchall()
     return render_template("consulta.html", q=q, resultados=resultados)
 
+# ── GASTOS OPERATIVOS ─────────────────────────────────────────────────────────────
+
+@app.route("/gastos")
+def gastos_operativos():
+    db = get_db()
+    rows = db.execute("""
+        SELECT cf.descripcion, cf.cantidad, cf.costo_real_unitario, cf.importe_total,
+               f.fecha, f.proveedor_nombre
+        FROM conceptos_factura cf
+        JOIN facturas f ON cf.factura_id = f.id
+        WHERE cf.tipo = 'gasto'
+        ORDER BY f.fecha DESC
+    """).fetchall()
+    resumen = db.execute("""
+        SELECT f.proveedor_nombre, COUNT(*) as num_cargos, SUM(cf.importe_total) as total
+        FROM conceptos_factura cf
+        JOIN facturas f ON cf.factura_id = f.id
+        WHERE cf.tipo = 'gasto'
+        GROUP BY f.proveedor_nombre ORDER BY total DESC
+    """).fetchall()
+    return render_template("gastos.html", gastos=rows, resumen=resumen)
+
 @app.route("/api/productos/buscar")
 def api_buscar_productos():
     db = get_db()
@@ -690,12 +743,11 @@ def api_buscar_productos():
                       (f"%{q}%",)).fetchall()
     return jsonify([dict(r) for r in rows])
 
-# ─── INIT DB AL ARRANCAR (gunicorn + desarrollo) ────────────────────────────────
-init_db()
+# ─── ARRANQUE ────────────────────────────────────────────────────────────────────
 
-# ─── MAIN ────────────────────────────────────────────────────────────────────────
+init_db()
+migrate_db()
 
 if __name__ == "__main__":
-    init_db()
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=False, host="0.0.0.0", port=port)
