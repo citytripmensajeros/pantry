@@ -15,6 +15,10 @@
     <form method="post" action="/pedidos/{{ pedido.id }}/cerrar" onsubmit="return confirm('¿Cerrar este pedido?')">
       <button class="btn btn-primary" type="submit">✓ Cerrar pedido</button>
     </form>
+    {% else %}
+    <form method="post" action="/pedidos/{{ pedido.id }}/reabrir" onsubmit="return confirm('¿Reabrir este pedido?')">
+      <button class="btn btn-secondary" type="submit">↩ Reabrir pedido</button>
+    </form>
     {% endif %}
     <a class="btn btn-secondary" href="/pedidos/{{ pedido.id }}/remision" target="_blank">🖨 Remisión</a>
     <a class="btn btn-amarillo" href="/pedidos/{{ pedido.id }}/exportar">⬇ Exportar CSV</a>
@@ -111,10 +115,7 @@
         <td>{{ c.cantidad }}</td>
         <td class="text-right mono">${{ "%.2f"|format(c.costo_real_unitario) }}</td>
         <td>
-          <form method="post" action="/pedidos/{{ pedido.id }}/agregar_concepto">
-            <input type="hidden" name="concepto_id" value="{{ c.id }}">
-            <button class="btn btn-sm btn-primary" type="submit">+ Agregar</button>
-          </form>
+          <button class="btn btn-sm btn-primary" onclick="openAsignar({{ c.id }}, '{{ c.descripcion|replace("'","\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }})">+ Agregar</button>
         </td>
       </tr>
       {% endfor %}
@@ -123,6 +124,40 @@
   </div>
 </div>
 {% endif %}
+
+<!-- Modal asignar concepto de factura -->
+<div class="modal-overlay" id="modal-asignar">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-asignar')">×</button>
+    <div class="modal-title">Asignar producto al pedido</div>
+    <form method="post" id="form-asignar" action="">
+      <input type="hidden" name="concepto_id" id="asignar-concepto-id">
+      <div class="form-group">
+        <label>Nombre del producto</label>
+        <input name="nombre_custom" id="asignar-nombre" required placeholder="Nombre que aparecerá en el pedido">
+        <small class="text-muted">Puedes cambiar el nombre del XML por uno estándar de Alegra.</small>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cantidad</label>
+          <input type="number" name="cantidad_custom" id="asignar-cantidad" step="0.01" min="0.01" required>
+        </div>
+        <div class="form-group">
+          <label>Costo real unit.</label>
+          <input type="number" id="asignar-costo" step="0.01" disabled style="background:#f5f6fa;">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Nota de equivalencia (opcional)</label>
+        <input name="nota_equivalencia" placeholder="Ej: 3x2 Julio Regalado, presentación 1L vs 500ml...">
+      </div>
+      <div class="gap">
+        <button class="btn btn-primary" type="submit">Agregar al pedido</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-asignar')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <!-- Modal agregar manual -->
 <div class="modal-overlay" id="modal-manual">
@@ -217,6 +252,15 @@ if (inputNombre) {
     const opt = document.querySelector(`#prod-list option[value="${inputNombre.value}"]`);
     if (opt && opt.dataset.precio) inputBase.value = opt.dataset.precio;
   });
+}
+
+function openAsignar(conceptoId, descripcion, cantidad, costoReal) {
+  document.getElementById('asignar-concepto-id').value = conceptoId;
+  document.getElementById('asignar-nombre').value = descripcion;
+  document.getElementById('asignar-cantidad').value = cantidad;
+  document.getElementById('asignar-costo').value = costoReal.toFixed(2);
+  document.getElementById('form-asignar').action = `/pedidos/{{ pedido.id }}/agregar_concepto`;
+  openModal('modal-asignar');
 }
 
 function openEditar(itemId, nombre, cantidad, precioBase, markupPct, notas) {
