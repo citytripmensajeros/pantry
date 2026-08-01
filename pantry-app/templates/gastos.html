@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Gastos Operativos — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>💼 Gastos Operativos</h1>
+  <p>Cargos de proveedores que no se asignan a clientes — comisiones, fletes, servicios.</p>
+</div>
+
+{% if resumen %}
+<div class="card mb1">
+  <div class="card-title">Resumen por proveedor</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Proveedor</th><th>Cargos registrados</th><th class="text-right">Total acumulado</th>
+      </tr></thead>
+      <tbody>
+      {% for r in resumen %}
+      <tr>
+        <td style="font-weight:600">{{ r.proveedor_nombre or '—' }}</td>
+        <td>{{ r.num_cargos }}</td>
+        <td class="text-right mono negative">${{ "%.2f"|format(r.total) }}</td>
+      </tr>
+      {% endfor %}
+      <tr style="font-weight:700; background:var(--azul-claro)">
+        <td>TOTAL</td>
+        <td>{{ resumen|sum(attribute='num_cargos') }}</td>
+        <td class="text-right mono negative">${{ "%.2f"|format(resumen|sum(attribute='total')) }}</td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-title">Detalle de gastos</div>
+  {% if gastos %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Fecha</th><th>Proveedor</th><th>Descripción</th>
+        <th>Cantidad</th><th class="text-right">Importe</th>
+      </tr></thead>
+      <tbody>
+      {% for gasto in gastos %}
+      <tr>
+        <td>{{ gasto.fecha }}</td>
+        <td class="text-muted">{{ gasto.proveedor_nombre }}</td>
+        <td>{{ gasto.descripcion }}</td>
+        <td>{{ gasto.cantidad }}</td>
+        <td class="text-right mono negative">${{ "%.2f"|format(gasto.importe_total) }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="text-align:center; padding:2.5rem; color:#888;">
+    <div style="font-size:2.5rem; margin-bottom:.5rem;">✅</div>
+    <div>No hay gastos operativos registrados aún.</div>
+    <div style="font-size:.85rem; margin-top:.5rem;">Cuando marques un concepto de factura como "Gasto", aparecerá aquí.</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
