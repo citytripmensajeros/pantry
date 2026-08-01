@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Reporte General — CityPantry{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h1>📊 Reporte General</h1>
+    <p>Movimientos por pedido y producto con costos, márgenes y proveedores.</p>
+  </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb1">
+  <form method="get" action="/reporte">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Cliente</label>
+        <select name="cliente_id">
+          <option value="">Todos</option>
+          {% for c in clientes %}
+          <option value="{{ c.id }}" {% if filtros.cliente_id == c.id|string %}selected{% endif %}>{{ c.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Pedido</label>
+        <select name="pedido_id">
+          <option value="">Todos</option>
+          {% for p in pedidos_lista %}
+          <option value="{{ p.id }}" {% if filtros.pedido_id == p.id|string %}selected{% endif %}>{{ p.numero }} — {{ p.cliente_nombre }} ({{ p.fecha }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Fecha desde</label>
+        <input type="date" name="fecha_ini" value="{{ filtros.fecha_ini }}">
+      </div>
+      <div class="form-group">
+        <label>Fecha hasta</label>
+        <input type="date" name="fecha_fin" value="{{ filtros.fecha_fin }}">
+      </div>
+    </div>
+    <div class="gap">
+      <button class="btn btn-primary" type="submit">Filtrar</button>
+      <a class="btn btn-secondary" href="/reporte">Limpiar</a>
+      <a class="btn btn-amarillo" href="/reporte?{{ request.query_string.decode() }}&exportar=csv">⬇ Exportar CSV</a>
+    </div>
+  </form>
+</div>
+
+<!-- Totales -->
+{% if rows %}
+<div class="stats-grid" style="grid-template-columns: repeat(4,1fr); margin-bottom:1rem;">
+  <div class="stat-card">
+    <div class="stat-num" style="font-size:1.4rem">{{ rows|length }}</div>
+    <div class="stat-label">Líneas</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="font-size:1.4rem">${{ "%.2f"|format(totales.costo) }}</div>
+    <div class="stat-label">Costo total</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="font-size:1.4rem; color:var(--azul)">${{ "%.2f"|format(totales.facturar) }}</div>
+    <div class="stat-label">Total a facturar</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="font-size:1.4rem; color:var(--success)">${{ "%.2f"|format(totales.margen) }} ({{ "%.1f"|format(totales.margen_pct) }}%)</div>
+    <div class="stat-label">Margen total</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Pedido</th>
+        <th>Fecha</th>
+        <th>Cliente</th>
+        <th>Producto</th>
+        <th>Proveedor</th>
+        <th>Folio factura</th>
+        <th class="text-right">Cant.</th>
+        <th class="text-right">Costo real</th>
+        <th class="text-right">Precio base</th>
+        <th class="text-right">Desc. prov.</th>
+        <th class="text-right">Markup</th>
+        <th class="text-right">P. cliente</th>
+        <th class="text-right">Margen unit.</th>
+        <th class="text-right">Total facturar</th>
+      </tr></thead>
+      <tbody>
+      {% set ns = namespace(pedido_actual='') %}
+      {% for r in rows %}
+      <tr {% if r.pedido_numero != ns.pedido_actual %}style="border-top:2px solid var(--azul-claro)"{% endif %}>
+        {% if r.pedido_numero != ns.pedido_actual %}
+          {% set ns.pedido_actual = r.pedido_numero %}
+          <td style="font-weight:700; color:var(--azul)">
+            <a href="/pedidos/{{ loop.index }}" style="color:var(--azul)">{{ r.pedido_numero }}</a>
+          </td>
+        {% else %}
+          <td class="text-muted" style="font-size:.75rem">↑</td>
+        {% endif %}
+        <td style="white-space:nowrap">{{ r.pedido_fecha }}</td>
+        <td>{{ r.cliente_nombre }}</td>
+        <td style="font-weight:500">{{ r.producto_nombre }}</td>
+        <td class="text-muted">{{ r.proveedor_nombre or r.factura_proveedor or '—' }}</td>
+        <td class="mono text-muted" style="font-size:.75rem">{{ r.folio_uuid[:8] if r.folio_uuid else '—' }}…</td>
+        <td class="text-right">{{ r.cantidad }}</td>
+        <td class="text-right mono">${{ "%.2f"|format(r.costo_real) }}</td>
+        <td class="text-right mono">${{ "%.2f"|format(r.precio_base) }}</td>
+        <td class="text-right mono {% if r.descuento_proveedor > 0 %}positive{% endif %}">
+          {% if r.descuento_proveedor > 0 %}+${{ "%.2f"|format(r.descuento_proveedor) }}{% else %}—{% endif %}
+        </td>
+        <td class="text-right mono">{{ "%.1f"|format(r.markup_pct * 100) }}%</td>
+        <td class="text-right mono">${{ "%.2f"|format(r.precio_cliente) }}</td>
+        <td class="text-right mono positive">${{ "%.2f"|format(r.margen_unit) }}</td>
+        <td class="text-right mono" style="font-weight:600">${{ "%.2f"|format(r.total_facturar) }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--azul-claro); font-weight:700;">
+          <td colspan="7">TOTALES</td>
+          <td class="text-right mono">${{ "%.2f"|format(totales.costo) }}</td>
+          <td colspan="4"></td>
+          <td class="text-right mono positive">${{ "%.2f"|format(totales.margen) }}</td>
+          <td class="text-right mono">${{ "%.2f"|format(totales.facturar) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card" style="text-align:center; padding:3rem; color:#888;">
+  <div style="font-size:2.5rem; margin-bottom:.5rem;">📊</div>
+  <div>No hay datos con los filtros seleccionados.</div>
+</div>
+{% endif %}
+{% endblock %}
