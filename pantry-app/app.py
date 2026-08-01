@@ -339,6 +339,7 @@ def upload_factura():
                 db.commit()
                 resultados.append({
                     "archivo": f.filename, "status": "ok",
+                    "factura_id": factura_id,
                     "proveedor": data["proveedor_nombre"],
                     "fecha": data["fecha"], "conceptos": len(data["conceptos"])
                 })
@@ -466,6 +467,14 @@ def agregar_concepto(pedido_id):
     nombre_custom = request.form.get("nombre_custom", "").strip() or concepto["descripcion"]
     cantidad_custom = float(request.form.get("cantidad_custom") or concepto["cantidad"])
     nota_equiv = request.form.get("nota_equivalencia", "").strip()
+
+    # Si el nombre cambió, renombrar en catálogo automáticamente
+    if nombre_custom != concepto["descripcion"]:
+        old_prod = db.execute("SELECT id FROM productos WHERE nombre=?", (concepto["descripcion"],)).fetchone()
+        new_exists = db.execute("SELECT id FROM productos WHERE nombre=?", (nombre_custom,)).fetchone()
+        if old_prod and not new_exists:
+            db.execute("UPDATE productos SET nombre=?, actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
+                       (nombre_custom, old_prod["id"]))
 
     prod = get_or_create_producto(db, nombre_custom)
     precio_base = prod["precio_base"] or concepto["costo_real_unitario"]
