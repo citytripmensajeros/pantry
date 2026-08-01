@@ -1,4 +1,5 @@
 import os
+import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -10,6 +11,13 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "citypantry-dev-key-2024")
 
 DATABASE = os.environ.get("DATABASE_PATH", "pantry.db")
+
+# Migración automática: si hay DB vieja y la nueva ruta no existe, copiarla
+_old_db = "pantry.db"
+if DATABASE != _old_db and not os.path.exists(DATABASE) and os.path.exists(_old_db):
+    os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
+    shutil.copy2(_old_db, DATABASE)
+    print(f"[CityPantry] Base de datos migrada de {_old_db} a {DATABASE}")
 
 # ─── DB CONNECTION ───────────────────────────────────────────────────────────────
 
