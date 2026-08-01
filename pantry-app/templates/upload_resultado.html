@@ -9,10 +9,11 @@
   <div style="padding: .75rem 0; border-bottom: 1px solid var(--borde); display:flex; align-items:center; gap:.75rem;">
     {% if r.status == 'ok' %}
       <span style="font-size:1.4rem">✅</span>
-      <div>
+      <div style="flex:1">
         <div style="font-weight:600">{{ r.archivo }}</div>
         <div class="text-muted" style="font-size:.82rem">{{ r.proveedor }} · {{ r.fecha }} · {{ r.conceptos }} conceptos</div>
       </div>
+      <a class="btn btn-sm btn-primary" href="/facturas/{{ r.factura_id }}">Ver factura →</a>
     {% elif r.status == 'duplicada' %}
       <span style="font-size:1.4rem">⚠️</span>
       <div>
