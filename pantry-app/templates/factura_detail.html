@@ -26,17 +26,30 @@
         </td>
         <td class="mono" style="font-weight:600">${{ "%.2f"|format(c.costo_real_unitario) }}</td>
         <td>
-          {% if c.asignado_item_id %}
+          {% if c.tipo == 'gasto' %}
+            <span class="badge badge-danger">💼 Gasto operativo</span>
+          {% elif c.asignado_item_id %}
             <span class="badge badge-success">✓ {{ c.pedido_numero }} · {{ c.cliente_nombre }}</span>
           {% else %}
             <span class="badge badge-warning">Sin asignar</span>
           {% endif %}
         </td>
         <td>
-          {% if not c.asignado_item_id %}
-          <button class="btn btn-sm btn-primary" onclick="openAsignar({{ c.id }}, '{{ c.descripcion|replace("'", "\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }})">
-            + Asignar
-          </button>
+          {% if c.tipo == 'gasto' %}
+            <form method="post" action="/facturas/concepto/{{ c.id }}/tipo" style="display:inline">
+              <input type="hidden" name="tipo" value="producto">
+              <button class="btn btn-sm btn-secondary" type="submit">↩ Revertir</button>
+            </form>
+          {% elif not c.asignado_item_id %}
+          <div class="gap">
+            <button class="btn btn-sm btn-primary" onclick="openAsignar({{ c.id }}, '{{ c.descripcion|replace("'", "\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }})">
+              + Asignar
+            </button>
+            <form method="post" action="/facturas/concepto/{{ c.id }}/tipo" onsubmit="return confirm('¿Marcar como gasto operativo? No se asignará a ningún cliente.')">
+              <input type="hidden" name="tipo" value="gasto">
+              <button class="btn btn-sm btn-danger" type="submit">💼 Gasto</button>
+            </form>
+          </div>
           {% else %}
           <a class="btn btn-sm btn-secondary" href="/pedidos/{{ c.pedido_id }}">Ver pedido</a>
           {% endif %}
