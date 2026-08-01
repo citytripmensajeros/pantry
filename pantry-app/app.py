@@ -531,6 +531,14 @@ def cerrar_pedido(pedido_id):
     flash("Pedido cerrado", "success")
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
+@app.route("/pedidos/<int:pedido_id>/reabrir", methods=["POST"])
+def reabrir_pedido(pedido_id):
+    db = get_db()
+    db.execute("UPDATE pedidos SET status='abierto' WHERE id=?", (pedido_id,))
+    db.commit()
+    flash("Pedido reabierto", "success")
+    return redirect(url_for("pedido_detail", pedido_id=pedido_id))
+
 @app.route("/pedidos/<int:pedido_id>/remision")
 def remision_pedido(pedido_id):
     db = get_db()
@@ -742,6 +750,99 @@ def gastos_operativos():
         GROUP BY f.proveedor_nombre ORDER BY total DESC
     """).fetchall()
     return render_template("gastos.html", gastos=rows, resumen=resumen)
+
+@app.route("/reporte")
+def reporte():
+    db = get_db()
+    clientes = db.execute("SELECT * FROM clientes ORDER BY nombre").fetchall()
+    pedidos_lista = db.execute("""
+        SELECT p.id, p.numero, p.fecha, c.nombre as cliente_nombre
+        FROM pedidos p JOIN clientes c ON p.cliente_id=c.id
+        ORDER BY p.fecha DESC
+    """).fetchall()
+
+    # Filtros
+    cliente_id = request.args.get("cliente_id", "")
+    pedido_id  = request.args.get("pedido_id", "")
+    fecha_ini  = request.args.get("fecha_ini", "")
+    fecha_fin  = request.args.get("fecha_fin", "")
+
+    where = ["1=1"]
+    params = []
+    if cliente_id:
+        where.append("p.cliente_id = ?"); params.append(cliente_id)
+    if pedido_id:
+        where.append("p.id = ?"); params.append(pedido_id)
+    if fecha_ini:
+        where.append("p.fecha >= ?"); params.append(fecha_ini)
+    if fecha_fin:
+        where.append("p.fecha <= ?"); params.append(fecha_fin)
+
+    rows = db.execute(f"""
+        SELECT
+            p.numero as pedido_numero, p.fecha as pedido_fecha,
+            c.nombre as cliente_nombre,
+            pi.producto_nombre, pi.cantidad,
+            pi.costo_real, pi.precio_base, pi.markup_pct,
+            pi.proveedor_nombre,
+            (pi.precio_base - pi.costo_real) as descuento_proveedor,
+            (pi.precio_base * (1 + pi.markup_pct)) as precio_cliente,
+            (pi.precio_base * (1 + pi.markup_pct) - pi.costo_real) as margen_unit,
+            (pi.precio_base * (1 + pi.markup_pct) * pi.cantidad) as total_facturar,
+            (pi.costo_real * pi.cantidad) as total_costo,
+            f.uuid as folio_uuid, f.proveedor_nombre as factura_proveedor
+        FROM pedido_items pi
+        JOIN pedidos p ON pi.pedido_id = p.id
+        JOIN clientes c ON p.cliente_id = c.id
+        LEFT JOIN conceptos_factura cf ON pi.concepto_id = cf.id
+        LEFT JOIN facturas f ON cf.factura_id = f.id
+        WHERE {" AND ".join(where)}
+        ORDER BY p.fecha DESC, p.numero, pi.id
+    """, params).fetchall()
+
+    exportar = request.args.get("exportar", "")
+    if exportar == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Pedido", "Fecha", "Cliente", "Producto", "Proveedor",
+                         "Folio Factura", "Cantidad", "Costo Real Unit.",
+                         "Precio Base Unit.", "Desc. Proveedor Unit.",
+                         "Markup %", "Precio Cliente Unit.", "Margen Unit.",
+                         "Total Costo", "Total Facturar"])
+        for r in rows:
+            writer.writerow([
+                r["pedido_numero"], r["pedido_fecha"], r["cliente_nombre"],
+                r["producto_nombre"], r["proveedor_nombre"] or r["factura_proveedor"] or "",
+                r["folio_uuid"] or "",
+                r["cantidad"],
+                f"{r['costo_real']:.2f}",
+                f"{r['precio_base']:.2f}",
+                f"{r['descuento_proveedor']:.2f}",
+                f"{r['markup_pct']*100:.1f}%",
+                f"{r['precio_cliente']:.2f}",
+                f"{r['margen_unit']:.2f}",
+                f"{r['total_costo']:.2f}",
+                f"{r['total_facturar']:.2f}",
+            ])
+        output.seek(0)
+        return send_file(
+            io.BytesIO(output.getvalue().encode("utf-8-sig")),
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name="reporte_citypantry.csv"
+        )
+
+    totales = {
+        "costo": sum(r["total_costo"] for r in rows),
+        "facturar": sum(r["total_facturar"] for r in rows),
+    }
+    totales["margen"] = totales["facturar"] - totales["costo"]
+    totales["margen_pct"] = (totales["margen"] / totales["facturar"] * 100) if totales["facturar"] else 0
+
+    return render_template("reporte.html", rows=rows, clientes=clientes,
+                           pedidos_lista=pedidos_lista, totales=totales,
+                           filtros={"cliente_id": cliente_id, "pedido_id": pedido_id,
+                                    "fecha_ini": fecha_ini, "fecha_fin": fecha_fin})
 
 @app.route("/api/productos/buscar")
 def api_buscar_productos():
