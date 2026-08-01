@@ -127,7 +127,9 @@
   <a href="/catalogo" {% if '/catalogo' in request.path %}class="active"{% endif %}>Catálogo</a>
   <a href="/consulta" {% if '/consulta' in request.path %}class="active"{% endif %}>📍 Consulta</a>
   <div class="nav-spacer"></div>
-  <a href="/clientes">Clientes</a>
+  <a href="/reporte" {% if '/reporte' in request.path %}class="active"{% endif %}>📊 Reporte</a>
+  <a href="/gastos" {% if '/gastos' in request.path %}class="active"{% endif %}>💼 Gastos</a>
+  <a href="/clientes" {% if '/clientes' in request.path %}class="active"{% endif %}>Clientes</a>
 </nav>
 <div class="container">
   {% with messages = get_flashed_messages(with_categories=true) %}
