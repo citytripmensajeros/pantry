@@ -62,12 +62,17 @@
       </div>
       <div class="form-group">
         <label>Cliente</label>
-        <select name="cliente_id" required>
+        <select name="cliente_id" id="select-cliente" required onchange="autoEnvio()">
           <option value="">Selecciona...</option>
           {% for c in clientes %}
-          <option value="{{ c.id }}">{{ c.nombre }}</option>
+          <option value="{{ c.id }}" data-envio="{{ c.costo_envio_default or 0 }}">{{ c.nombre }}</option>
           {% endfor %}
         </select>
+      </div>
+      <div class="form-group">
+        <label>Costo de envío ($)</label>
+        <input type="number" name="costo_envio" id="input-envio" step="0.01" min="0" placeholder="0.00" value="0">
+        <small class="text-muted">Se pre-llena con el default del cliente. Puedes modificarlo.</small>
       </div>
       <div class="form-group">
         <label>Notas (opcional)</label>
@@ -85,5 +90,12 @@
 <script>
 document.getElementById('fecha-input').value = new Date().toISOString().slice(0,10);
 document.getElementById('folio-input').value = '{{ siguiente_folio }}';
+
+function autoEnvio() {
+  const sel = document.getElementById('select-cliente');
+  const opt = sel.options[sel.selectedIndex];
+  const envio = opt ? (opt.dataset.envio || '0') : '0';
+  document.getElementById('input-envio').value = parseFloat(envio).toFixed(2);
+}
 </script>
 {% endblock %}
