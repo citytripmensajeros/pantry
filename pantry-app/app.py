@@ -405,7 +405,18 @@ def pedidos():
         GROUP BY p.id ORDER BY p.fecha DESC
     """).fetchall()
     clientes = db.execute("SELECT * FROM clientes ORDER BY nombre").fetchall()
-    return render_template("pedidos.html", pedidos=rows, clientes=clientes)
+
+    # Generar siguiente folio P-XXX
+    import re
+    ultimos = db.execute("SELECT numero FROM pedidos ORDER BY id DESC LIMIT 20").fetchall()
+    max_num = 0
+    for u in ultimos:
+        m = re.match(r'P-(\d+)', u["numero"])
+        if m:
+            max_num = max(max_num, int(m.group(1)))
+    siguiente_folio = f"P-{(max_num + 1):03d}"
+
+    return render_template("pedidos.html", pedidos=rows, clientes=clientes, siguiente_folio=siguiente_folio)
 
 @app.route("/pedidos/nuevo", methods=["POST"])
 def nuevo_pedido():
