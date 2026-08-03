@@ -357,11 +357,13 @@ def factura_detail(factura_id):
         return redirect(url_for("facturas"))
     conceptos = db.execute("""
         SELECT cf.*, pi.id as asignado_item_id, pi.pedido_id,
-               p.numero as pedido_numero, c.nombre as cliente_nombre
+               p.numero as pedido_numero, c.nombre as cliente_nombre,
+               pr.precio_base as precio_base_catalogo
         FROM conceptos_factura cf
         LEFT JOIN pedido_items pi ON pi.concepto_id = cf.id
         LEFT JOIN pedidos p ON pi.pedido_id = p.id
         LEFT JOIN clientes c ON p.cliente_id = c.id
+        LEFT JOIN productos pr ON pr.nombre = cf.descripcion
         WHERE cf.factura_id = ?
     """, (factura_id,)).fetchall()
     pedidos = db.execute("""
@@ -436,9 +438,11 @@ def pedido_detail(pedido_id):
         WHERE pi.pedido_id = ?
     """, (pedido_id,)).fetchall()
     sin_asignar = db.execute("""
-        SELECT cf.*, f.fecha, f.proveedor_nombre, f.id as factura_id
+        SELECT cf.*, f.fecha, f.proveedor_nombre, f.id as factura_id,
+               pr.precio_base as precio_base_catalogo
         FROM conceptos_factura cf
         JOIN facturas f ON cf.factura_id = f.id
+        LEFT JOIN productos pr ON pr.nombre = cf.descripcion
         WHERE cf.id NOT IN (SELECT concepto_id FROM pedido_items WHERE concepto_id IS NOT NULL)
         AND (cf.tipo IS NULL OR cf.tipo = 'producto')
         ORDER BY f.fecha DESC, cf.descripcion
@@ -477,7 +481,17 @@ def agregar_concepto(pedido_id):
                        (nombre_custom, old_prod["id"]))
 
     prod = get_or_create_producto(db, nombre_custom)
-    precio_base = prod["precio_base"] or concepto["costo_real_unitario"]
+
+    # Precio base: usar el del form si lo capturaron, si no el del catálogo
+    precio_base_form = request.form.get("precio_base_custom", "").strip()
+    if precio_base_form:
+        precio_base = float(precio_base_form)
+        # Guardar en catálogo para futuros pedidos
+        db.execute("UPDATE productos SET precio_base=?, actualizado_en=CURRENT_TIMESTAMP WHERE nombre=?",
+                   (precio_base, nombre_custom))
+    else:
+        precio_base = prod["precio_base"] or concepto["costo_real_unitario"]
+
     markup = pedido["markup_default"]
 
     db.execute("""
