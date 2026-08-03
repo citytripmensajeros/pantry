@@ -42,7 +42,7 @@
             </form>
           {% elif not c.asignado_item_id %}
           <div class="gap">
-            <button class="btn btn-sm btn-primary" onclick="openAsignar({{ c.id }}, '{{ c.descripcion|replace("'", "\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }})">
+            <button class="btn btn-sm btn-primary" onclick="openAsignar({{ c.id }}, '{{ c.descripcion|replace("'", "\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }}, {{ c.precio_base_catalogo or 'null' }})">
               + Asignar
             </button>
             <form method="post" action="/facturas/concepto/{{ c.id }}/tipo" onsubmit="return confirm('¿Marcar como gasto operativo? No se asignará a ningún cliente.')">
@@ -80,6 +80,11 @@
           <input type="number" name="cantidad_custom" id="input-cantidad-custom" step="0.01" min="0.01" required>
           <small class="text-muted">Ajusta si hay equivalencia de presentación.</small>
         </div>
+        <div class="form-group">
+          <label>Precio base unitario</label>
+          <input type="number" name="precio_base_custom" id="input-precio-base" step="0.01" min="0" placeholder="0.00">
+          <small class="text-muted">Se guarda en catálogo para futuros pedidos.</small>
+        </div>
       </div>
       <div class="form-group">
         <label>Nota de equivalencia (opcional)</label>
@@ -104,12 +109,14 @@
 {% endblock %}
 {% block scripts %}
 <script>
-function openAsignar(conceptoId, nombre, cantidad, costoReal) {
+function openAsignar(conceptoId, nombre, cantidad, costoReal, precioBase) {
   document.getElementById('input-concepto-id').value = conceptoId;
   document.getElementById('input-nombre-custom').value = nombre;
   document.getElementById('input-cantidad-custom').value = cantidad;
+  document.getElementById('input-precio-base').value = precioBase ? precioBase.toFixed(2) : '';
   document.getElementById('modal-producto-info').innerHTML =
-    `<strong>${nombre}</strong><br>Cantidad: ${cantidad} · Costo real: $${costoReal.toFixed(2)}`;
+    `<strong>${nombre}</strong><br>Cantidad: ${cantidad} · Costo real: $${costoReal.toFixed(2)}` +
+    (precioBase ? ` · Precio base catálogo: $${precioBase.toFixed(2)}` : ' · <em>Sin precio base en catálogo</em>');
   openModal('modal-asignar');
 }
 function updatePedidoUrl() {
