@@ -7,23 +7,33 @@
 </div>
 
 <div class="card">
-  <div class="card-title">Conceptos de la factura — asigna a pedidos</div>
+  <div class="card-title">Conceptos de la factura</div>
   <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>Descripción</th><th>Cantidad</th><th>Precio unitario (XML)</th>
-        <th>Descuento factura</th><th>Costo real unitario</th>
-        <th>Estado</th><th>Acción</th>
+        <th>Descripción (XML)</th><th>Nombre en catálogo</th><th>Cód. Alegra</th>
+        <th>Cantidad</th><th>Costo real unit.</th>
+        <th>Estado</th><th>Acciones</th>
       </tr></thead>
       <tbody>
       {% for c in conceptos %}
       <tr>
-        <td style="font-weight:500">{{ c.descripcion }}</td>
-        <td>{{ c.cantidad }}</td>
-        <td class="mono">${{ "%.2f"|format(c.valor_unitario) }}</td>
-        <td class="mono {% if c.descuento_factura > 0 %}positive{% endif %}">
-          {% if c.descuento_factura > 0 %}-${{ "%.2f"|format(c.descuento_factura) }}{% else %}—{% endif %}
+        <td class="text-muted" style="font-size:.85rem">{{ c.descripcion }}</td>
+        <td style="font-weight:500">
+          {% if c.prod_nombre_catalogo %}
+            {{ c.prod_nombre_catalogo }}
+          {% else %}
+            <span class="text-muted" style="font-style:italic">Sin configurar</span>
+          {% endif %}
         </td>
+        <td class="mono" style="font-size:.85rem">
+          {% if c.prod_alegra_codigo %}
+            <span style="color:var(--azul)">{{ c.prod_alegra_codigo }}</span>
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td>{{ c.cantidad }}</td>
         <td class="mono" style="font-weight:600">${{ "%.2f"|format(c.costo_real_unitario) }}</td>
         <td>
           {% if c.tipo == 'gasto' %}
@@ -40,24 +50,54 @@
               <input type="hidden" name="tipo" value="producto">
               <button class="btn btn-sm btn-secondary" type="submit">↩ Revertir</button>
             </form>
-          {% elif not c.asignado_item_id %}
+          {% elif c.asignado_item_id %}
+            <a class="btn btn-sm btn-secondary" href="/pedidos/{{ c.pedido_id }}">Ver pedido</a>
+          {% else %}
           <div class="gap">
-            <button class="btn btn-sm btn-primary" onclick="openAsignar({{ c.id }}, '{{ c.descripcion|replace("'", "\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }}, {{ c.precio_base_catalogo or 'null' }})">
+            <button class="btn btn-sm btn-secondary"
+              onclick="openConfigurar({{ c.id }}, '{{ c.descripcion|replace("'","\\'") }}', '{{ (c.prod_nombre_catalogo or '')|replace("'","\\'") }}', '{{ (c.prod_alegra_codigo or "") }}')">
+              ⚙ Configurar
+            </button>
+            <button class="btn btn-sm btn-primary"
+              onclick="openAsignar({{ c.id }}, '{{ (c.prod_nombre_catalogo or c.descripcion)|replace("'","\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }}, {{ c.precio_base_catalogo or 'null' }})">
               + Asignar
             </button>
-            <form method="post" action="/facturas/concepto/{{ c.id }}/tipo" onsubmit="return confirm('¿Marcar como gasto operativo? No se asignará a ningún cliente.')">
+            <form method="post" action="/facturas/concepto/{{ c.id }}/tipo" onsubmit="return confirm('¿Marcar como gasto operativo?')">
               <input type="hidden" name="tipo" value="gasto">
               <button class="btn btn-sm btn-danger" type="submit">💼 Gasto</button>
             </form>
           </div>
-          {% else %}
-          <a class="btn btn-sm btn-secondary" href="/pedidos/{{ c.pedido_id }}">Ver pedido</a>
           {% endif %}
         </td>
       </tr>
       {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Modal configurar producto -->
+<div class="modal-overlay" id="modal-configurar">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-configurar')">×</button>
+    <div class="modal-title">⚙ Configurar producto en catálogo</div>
+    <div id="configurar-xml-info" style="background:var(--azul-claro); padding:.75rem; border-radius:8px; margin-bottom:1rem; font-size:.85rem; color:#555;"></div>
+    <form method="post" id="form-configurar">
+      <div class="form-group">
+        <label>Nombre en catálogo</label>
+        <input name="nombre_catalogo" id="conf-nombre" required placeholder="Como lo reconocen internamente">
+        <small class="text-muted">Reemplaza al nombre del XML. Aparece en pedidos y remisiones.</small>
+      </div>
+      <div class="form-group">
+        <label>Código Alegra</label>
+        <input name="alegra_codigo" id="conf-alegra" placeholder="Ej: 1234">
+        <small class="text-muted">El ID del producto en Alegra (campo "Código" en la pantalla del producto).</small>
+      </div>
+      <div class="gap">
+        <button class="btn btn-primary" type="submit">Guardar en catálogo</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-configurar')">Cancelar</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -99,9 +139,6 @@
           {% endfor %}
         </select>
       </div>
-      <p class="text-muted" style="font-size:.82rem; margin-bottom:1rem;">
-        El precio base y markup se tomarán del catálogo. Podrás ajustarlos dentro del pedido.
-      </p>
       <button class="btn btn-primary" type="submit">Asignar</button>
     </form>
   </div>
@@ -109,6 +146,15 @@
 {% endblock %}
 {% block scripts %}
 <script>
+function openConfigurar(conceptoId, descripcionXml, nombreCatalogo, alegraCodigo) {
+  document.getElementById('configurar-xml-info').innerHTML =
+    `<strong>Nombre en factura (XML):</strong> ${descripcionXml}`;
+  document.getElementById('conf-nombre').value = nombreCatalogo || descripcionXml;
+  document.getElementById('conf-alegra').value = alegraCodigo || '';
+  document.getElementById('form-configurar').action = `/facturas/concepto/${conceptoId}/configurar_producto`;
+  openModal('modal-configurar');
+}
+
 function openAsignar(conceptoId, nombre, cantidad, costoReal, precioBase) {
   document.getElementById('input-concepto-id').value = conceptoId;
   document.getElementById('input-nombre-custom').value = nombre;
@@ -119,6 +165,7 @@ function openAsignar(conceptoId, nombre, cantidad, costoReal, precioBase) {
     (precioBase ? ` · Precio base catálogo: $${precioBase.toFixed(2)}` : ' · <em>Sin precio base en catálogo</em>');
   openModal('modal-asignar');
 }
+
 function updatePedidoUrl() {
   const pedidoId = document.getElementById('select-pedido').value;
   if (pedidoId) {
