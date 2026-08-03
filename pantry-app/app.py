@@ -142,6 +142,8 @@ def migrate_db():
     db = sqlite3.connect(DATABASE)
     migrations = [
         "ALTER TABLE conceptos_factura ADD COLUMN tipo TEXT DEFAULT 'producto'",
+        "ALTER TABLE productos ADD COLUMN alegra_codigo TEXT",
+        "ALTER TABLE productos ADD COLUMN descripcion_xml TEXT",
         """CREATE VIEW IF NOT EXISTS v_pedido_items AS
         SELECT
             pi.id, pi.pedido_id, pi.concepto_id, pi.producto_nombre,
@@ -335,7 +337,6 @@ def upload_factura():
                     """, (factura_id, c["descripcion"], c["cantidad"], c["unidad"],
                           c["valor_unitario"], c["descuento_factura"], c["costo_real_unitario"],
                           c["importe_total"], c["clave_prod_serv"]))
-                    get_or_create_producto(db, c["descripcion"])
                 db.commit()
                 resultados.append({
                     "archivo": f.filename, "status": "ok",
@@ -358,12 +359,15 @@ def factura_detail(factura_id):
     conceptos = db.execute("""
         SELECT cf.*, pi.id as asignado_item_id, pi.pedido_id,
                p.numero as pedido_numero, c.nombre as cliente_nombre,
-               pr.precio_base as precio_base_catalogo
+               pr.precio_base as precio_base_catalogo,
+               pr.nombre as prod_nombre_catalogo,
+               pr.alegra_codigo as prod_alegra_codigo,
+               pr.id as prod_id
         FROM conceptos_factura cf
         LEFT JOIN pedido_items pi ON pi.concepto_id = cf.id
         LEFT JOIN pedidos p ON pi.pedido_id = p.id
         LEFT JOIN clientes c ON p.cliente_id = c.id
-        LEFT JOIN productos pr ON pr.nombre = cf.descripcion
+        LEFT JOIN productos pr ON (pr.nombre = cf.descripcion OR pr.descripcion_xml = cf.descripcion)
         WHERE cf.factura_id = ?
     """, (factura_id,)).fetchall()
     pedidos = db.execute("""
@@ -372,6 +376,46 @@ def factura_detail(factura_id):
         WHERE p.status = 'abierto' ORDER BY p.fecha DESC
     """).fetchall()
     return render_template("factura_detail.html", factura=factura, conceptos=conceptos, pedidos=pedidos)
+
+@app.route("/facturas/concepto/<int:concepto_id>/configurar_producto", methods=["POST"])
+def configurar_producto(concepto_id):
+    db = get_db()
+    concepto = db.execute("SELECT * FROM conceptos_factura WHERE id=?", (concepto_id,)).fetchone()
+    if not concepto:
+        flash("Concepto no encontrado", "error")
+        return redirect(url_for("facturas"))
+
+    nombre_catalogo = request.form.get("nombre_catalogo", "").strip() or concepto["descripcion"]
+    alegra_codigo   = request.form.get("alegra_codigo", "").strip() or None
+    factura_id      = concepto["factura_id"]
+
+    # Buscar si ya hay un producto vinculado a esta descripción XML
+    prod_by_xml  = db.execute("SELECT id FROM productos WHERE descripcion_xml=?", (concepto["descripcion"],)).fetchone()
+    prod_by_orig = db.execute("SELECT id FROM productos WHERE nombre=?",          (concepto["descripcion"],)).fetchone()
+    prod_by_new  = db.execute("SELECT id FROM productos WHERE nombre=?",          (nombre_catalogo,)).fetchone()
+
+    if prod_by_xml:
+        # Ya está vinculado — solo actualiza nombre y código
+        db.execute("UPDATE productos SET nombre=?, alegra_codigo=?, actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
+                   (nombre_catalogo, alegra_codigo, prod_by_xml["id"]))
+    elif prod_by_orig:
+        # Existe con el nombre del XML — renombrar y guardar alias
+        db.execute("""UPDATE productos SET nombre=?, alegra_codigo=?, descripcion_xml=?,
+                      actualizado_en=CURRENT_TIMESTAMP WHERE id=?""",
+                   (nombre_catalogo, alegra_codigo, concepto["descripcion"], prod_by_orig["id"]))
+    elif prod_by_new:
+        # Ya existe con nombre personalizado — solo agregar alias y código
+        db.execute("""UPDATE productos SET alegra_codigo=?, descripcion_xml=?,
+                      actualizado_en=CURRENT_TIMESTAMP WHERE id=?""",
+                   (alegra_codigo, concepto["descripcion"], prod_by_new["id"]))
+    else:
+        # Producto nuevo — crear con nombre personalizado y alias XML
+        db.execute("INSERT INTO productos (nombre, alegra_codigo, descripcion_xml) VALUES (?,?,?)",
+                   (nombre_catalogo, alegra_codigo, concepto["descripcion"]))
+
+    db.commit()
+    flash(f"Producto '{nombre_catalogo}' configurado en catálogo", "success")
+    return redirect(url_for("factura_detail", factura_id=factura_id))
 
 @app.route("/facturas/concepto/<int:concepto_id>/tipo", methods=["POST"])
 def cambiar_tipo_concepto(concepto_id):
@@ -723,16 +767,19 @@ def editar_producto(producto_id):
             return redirect(url_for("catalogo"))
         db.execute("UPDATE productos SET nombre=? WHERE id=?", (nombre_nuevo, producto_id))
 
+    alegra_codigo = request.form.get("alegra_codigo", "").strip() or None
+
     if precio_base_nuevo:
         precio_base_nuevo = float(precio_base_nuevo)
         if prod["precio_base"] != precio_base_nuevo:
             db.execute("INSERT INTO precio_base_historial (producto_id, precio_base) VALUES (?,?)",
                        (producto_id, precio_base_nuevo))
-        db.execute("UPDATE productos SET precio_base=?, categoria=?, notas=?, actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
-                   (precio_base_nuevo, categoria, notas, producto_id))
+        db.execute("""UPDATE productos SET precio_base=?, categoria=?, notas=?,
+                      alegra_codigo=?, actualizado_en=CURRENT_TIMESTAMP WHERE id=?""",
+                   (precio_base_nuevo, categoria, notas, alegra_codigo, producto_id))
     else:
-        db.execute("UPDATE productos SET categoria=?, notas=? WHERE id=?",
-                   (categoria, notas, producto_id))
+        db.execute("UPDATE productos SET categoria=?, notas=?, alegra_codigo=? WHERE id=?",
+                   (categoria, notas, alegra_codigo, producto_id))
 
     db.commit()
     flash("Producto actualizado", "success")
