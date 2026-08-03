@@ -115,7 +115,7 @@
         <td>{{ c.cantidad }}</td>
         <td class="text-right mono">${{ "%.2f"|format(c.costo_real_unitario) }}</td>
         <td>
-          <button class="btn btn-sm btn-primary" onclick="openAsignar({{ c.id }}, '{{ c.descripcion|replace("'","\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }})">+ Agregar</button>
+          <button class="btn btn-sm btn-primary" onclick="openAsignar({{ c.id }}, '{{ c.descripcion|replace("'","\\'") }}', {{ c.cantidad }}, {{ c.costo_real_unitario }}, {{ c.precio_base_catalogo or 'null' }})">+ Agregar</button>
         </td>
       </tr>
       {% endfor %}
@@ -146,6 +146,11 @@
           <label>Costo real unit.</label>
           <input type="number" id="asignar-costo" step="0.01" disabled style="background:#f5f6fa;">
         </div>
+      </div>
+      <div class="form-group">
+        <label>Precio base unitario</label>
+        <input type="number" name="precio_base_custom" id="asignar-precio-base" step="0.01" min="0" placeholder="0.00">
+        <small class="text-muted">Se guarda en catálogo. Déjalo vacío si ya está registrado.</small>
       </div>
       <div class="form-group">
         <label>Nota de equivalencia (opcional)</label>
@@ -254,11 +259,12 @@ if (inputNombre) {
   });
 }
 
-function openAsignar(conceptoId, descripcion, cantidad, costoReal) {
+function openAsignar(conceptoId, descripcion, cantidad, costoReal, precioBase) {
   document.getElementById('asignar-concepto-id').value = conceptoId;
   document.getElementById('asignar-nombre').value = descripcion;
   document.getElementById('asignar-cantidad').value = cantidad;
   document.getElementById('asignar-costo').value = costoReal.toFixed(2);
+  document.getElementById('asignar-precio-base').value = precioBase ? precioBase.toFixed(2) : '';
   document.getElementById('form-asignar').action = `/pedidos/{{ pedido.id }}/agregar_concepto`;
   openModal('modal-asignar');
 }
