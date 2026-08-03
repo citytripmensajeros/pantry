@@ -144,6 +144,9 @@ def migrate_db():
         "ALTER TABLE conceptos_factura ADD COLUMN tipo TEXT DEFAULT 'producto'",
         "ALTER TABLE productos ADD COLUMN alegra_codigo TEXT",
         "ALTER TABLE productos ADD COLUMN descripcion_xml TEXT",
+        "ALTER TABLE clientes ADD COLUMN alegra_codigo TEXT",
+        "ALTER TABLE clientes ADD COLUMN costo_envio_default REAL DEFAULT 0",
+        "ALTER TABLE pedidos ADD COLUMN costo_envio REAL DEFAULT 0",
         """CREATE VIEW IF NOT EXISTS v_pedido_items AS
         SELECT
             pi.id, pi.pedido_id, pi.concepto_id, pi.producto_nombre,
@@ -448,7 +451,7 @@ def pedidos():
         LEFT JOIN v_pedido_items pi ON pi.pedido_id = p.id
         GROUP BY p.id ORDER BY p.fecha DESC
     """).fetchall()
-    clientes = db.execute("SELECT * FROM clientes ORDER BY nombre").fetchall()
+    clientes = db.execute("SELECT id, nombre, markup_default, costo_envio_default FROM clientes ORDER BY nombre").fetchall()
 
     # Generar siguiente folio P-XXX
     import re
@@ -466,9 +469,10 @@ def pedidos():
 def nuevo_pedido():
     db = get_db()
     try:
-        db.execute("INSERT INTO pedidos (numero, cliente_id, fecha, notas) VALUES (?,?,?,?)",
+        db.execute("INSERT INTO pedidos (numero, cliente_id, fecha, notas, costo_envio) VALUES (?,?,?,?,?)",
                    (request.form["numero"], request.form["cliente_id"],
-                    request.form["fecha"], request.form.get("notas", "")))
+                    request.form["fecha"], request.form.get("notas", ""),
+                    float(request.form.get("costo_envio", 0) or 0)))
         db.commit()
         flash(f"Pedido {request.form['numero']} creado", "success")
     except Exception as e:
@@ -479,7 +483,7 @@ def nuevo_pedido():
 def pedido_detail(pedido_id):
     db = get_db()
     pedido = db.execute("""
-        SELECT p.*, c.nombre as cliente_nombre, c.markup_default
+        SELECT p.*, c.nombre as cliente_nombre, c.markup_default, c.alegra_codigo as cliente_alegra_codigo
         FROM pedidos p JOIN clientes c ON p.cliente_id = c.id WHERE p.id=?
     """, (pedido_id,)).fetchone()
     if not pedido:
@@ -503,10 +507,12 @@ def pedido_detail(pedido_id):
         ORDER BY f.fecha DESC, cf.descripcion
     """).fetchall()
     productos_cat = db.execute("SELECT * FROM productos ORDER BY nombre").fetchall()
+    costo_envio = pedido["costo_envio"] or 0
     totales = {
         "costo": sum(i["total_costo"] for i in items),
-        "facturar": sum(i["total_facturar"] for i in items),
-        "margen": sum((i["total_facturar"] - i["total_costo"]) for i in items),
+        "facturar": sum(i["total_facturar"] for i in items) + costo_envio,
+        "margen": sum((i["total_facturar"] - i["total_costo"]) for i in items) + costo_envio,
+        "envio": costo_envio,
     }
     totales["margen_pct"] = (totales["margen"] / totales["facturar"] * 100) if totales["facturar"] > 0 else 0
     return render_template("pedido_detail.html", pedido=pedido, items=items,
@@ -617,6 +623,15 @@ def reabrir_pedido(pedido_id):
     flash("Pedido reabierto", "success")
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
+@app.route("/pedidos/<int:pedido_id>/envio", methods=["POST"])
+def actualizar_envio(pedido_id):
+    db = get_db()
+    costo_envio = float(request.form.get("costo_envio", 0) or 0)
+    db.execute("UPDATE pedidos SET costo_envio=? WHERE id=?", (costo_envio, pedido_id))
+    db.commit()
+    flash("Costo de envío actualizado", "success")
+    return redirect(url_for("pedido_detail", pedido_id=pedido_id))
+
 @app.route("/pedidos/<int:pedido_id>/remision")
 def remision_pedido(pedido_id):
     db = get_db()
@@ -705,9 +720,11 @@ def clientes():
 def nuevo_cliente():
     db = get_db()
     try:
-        db.execute("INSERT INTO clientes (nombre, markup_default, notas) VALUES (?,?,?)",
+        db.execute("INSERT INTO clientes (nombre, markup_default, notas, alegra_codigo, costo_envio_default) VALUES (?,?,?,?,?)",
                    (request.form["nombre"], float(request.form.get("markup_default", 0.15)),
-                    request.form.get("notas", "")))
+                    request.form.get("notas", ""),
+                    request.form.get("alegra_codigo", "").strip() or None,
+                    float(request.form.get("costo_envio_default", 0) or 0)))
         db.commit()
         flash(f"Cliente '{request.form['nombre']}' creado", "success")
     except Exception as e:
@@ -717,9 +734,12 @@ def nuevo_cliente():
 @app.route("/clientes/<int:cliente_id>/editar", methods=["POST"])
 def editar_cliente(cliente_id):
     db = get_db()
-    db.execute("UPDATE clientes SET markup_default=?, notas=? WHERE id=?",
+    db.execute("""UPDATE clientes SET markup_default=?, notas=?, alegra_codigo=?, costo_envio_default=? WHERE id=?""",
                (float(request.form.get("markup_default", 0.15)),
-                request.form.get("notas", ""), cliente_id))
+                request.form.get("notas", ""),
+                request.form.get("alegra_codigo", "").strip() or None,
+                float(request.form.get("costo_envio_default", 0) or 0),
+                cliente_id))
     db.commit()
     flash("Cliente actualizado", "success")
     return redirect(url_for("clientes"))
