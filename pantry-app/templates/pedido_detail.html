@@ -26,10 +26,19 @@
 </div>
 
 <!-- Totales -->
-<div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+<div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
   <div class="stat-card">
     <div class="stat-num" style="font-size:1.5rem">${{ "%.2f"|format(totales.costo) }}</div>
     <div class="stat-label">Costo total (real)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-num" style="font-size:1.5rem; color:var(--azul)">${{ "%.2f"|format(totales.envio) }}</div>
+    <div class="stat-label">Envío
+      {% if pedido.status == 'abierto' %}
+      <button class="btn btn-sm btn-secondary" style="margin-left:.5rem; padding:.1rem .4rem; font-size:.75rem"
+        onclick="openModal('modal-envio')">✏</button>
+      {% endif %}
+    </div>
   </div>
   <div class="stat-card">
     <div class="stat-num" style="font-size:1.5rem; color:var(--azul)">${{ "%.2f"|format(totales.facturar) }}</div>
@@ -42,6 +51,25 @@
   <div class="stat-card">
     <div class="stat-num" style="font-size:1.5rem; color:var(--success)">{{ "%.1f"|format(totales.margen_pct) }}%</div>
     <div class="stat-label">% margen</div>
+  </div>
+</div>
+
+<!-- Modal editar envío -->
+<div class="modal-overlay" id="modal-envio">
+  <div class="modal" style="max-width:360px">
+    <button class="modal-close" onclick="closeModal('modal-envio')">×</button>
+    <div class="modal-title">Costo de envío</div>
+    <form method="post" action="/pedidos/{{ pedido.id }}/envio">
+      <div class="form-group">
+        <label>Costo ($)</label>
+        <input type="number" name="costo_envio" step="0.01" min="0"
+               value="{{ "%.2f"|format(pedido.costo_envio or 0) }}" required>
+      </div>
+      <div class="gap">
+        <button class="btn btn-primary" type="submit">Guardar</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-envio')">Cancelar</button>
+      </div>
+    </form>
   </div>
 </div>
 
