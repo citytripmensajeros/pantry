@@ -19,6 +19,7 @@
       <thead><tr>
         <th>Producto</th><th>Categoría</th>
         <th class="text-right">Precio Base</th>
+        <th>Cód. Alegra</th>
         <th>Veces comprado</th><th>Última compra</th><th></th>
       </tr></thead>
       <tbody>
@@ -29,11 +30,14 @@
         <td class="text-right mono" style="font-weight:600">
           {% if p.precio_base %}${{ "%.2f"|format(p.precio_base) }}{% else %}<span class="badge badge-warning">Sin definir</span>{% endif %}
         </td>
+        <td class="mono" style="font-size:.85rem">
+          {% if p.alegra_codigo %}<span style="color:var(--azul)">{{ p.alegra_codigo }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
         <td>{{ p.veces_pedido }}</td>
         <td class="text-muted">{{ p.ultima_compra or '—' }}</td>
         <td>
           <button class="btn btn-sm btn-secondary"
-            onclick="openEditarProd({{ p.id }}, '{{ p.nombre|replace("'","\\'") }}', {{ p.precio_base or 'null' }}, '{{ p.categoria or '' }}', '{{ p.notas or '' }}')">
+            onclick="openEditarProd({{ p.id }}, '{{ p.nombre|replace("'","\\'") }}', {{ p.precio_base or 'null' }}, '{{ p.categoria or "" }}', '{{ p.notas or "" }}', '{{ p.alegra_codigo or "" }}')">
             ✏ Editar
           </button>
         </td>
@@ -51,8 +55,13 @@
 <div class="modal-overlay" id="modal-prod">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('modal-prod')">×</button>
-    <div class="modal-title">Editar: <span id="ep-nombre"></span></div>
+    <div class="modal-title">Editar: <span id="ep-nombre-actual"></span></div>
     <form method="post" id="form-prod">
+      <div class="form-group">
+        <label>Nombre del producto</label>
+        <input name="nombre" id="ep-nombre" required>
+        <small class="text-muted">Cambiar el nombre aplica solo hacia adelante — pedidos anteriores conservan el nombre original.</small>
+      </div>
       <div class="form-group">
         <label>Precio base unitario ($)</label>
         <input type="number" name="precio_base" id="ep-base" step="0.01" min="0" placeholder="0.00">
@@ -61,6 +70,11 @@
       <div class="form-group">
         <label>Categoría</label>
         <input name="categoria" id="ep-cat" placeholder="Bebidas, Snacks, Lácteos...">
+      </div>
+      <div class="form-group">
+        <label>Código Alegra</label>
+        <input name="alegra_codigo" id="ep-alegra" placeholder="ID del producto en Alegra">
+        <small class="text-muted">Se usa para la integración con Alegra al enviar remisiones.</small>
       </div>
       <div class="form-group">
         <label>Notas</label>
@@ -76,10 +90,12 @@
 {% endblock %}
 {% block scripts %}
 <script>
-function openEditarProd(id, nombre, precioBase, categoria, notas) {
-  document.getElementById('ep-nombre').textContent = nombre;
+function openEditarProd(id, nombre, precioBase, categoria, notas, alegraCodigo) {
+  document.getElementById('ep-nombre-actual').textContent = nombre;
+  document.getElementById('ep-nombre').value = nombre;
   document.getElementById('ep-base').value = precioBase || '';
   document.getElementById('ep-cat').value = categoria;
+  document.getElementById('ep-alegra').value = alegraCodigo || '';
   document.getElementById('ep-notas').value = notas;
   document.getElementById('form-prod').action = `/catalogo/${id}/editar`;
   openModal('modal-prod');
