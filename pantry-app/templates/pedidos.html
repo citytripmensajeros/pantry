@@ -51,15 +51,14 @@
     <button class="modal-close" onclick="closeModal('modal-pedido')">×</button>
     <div class="modal-title">Nuevo Pedido</div>
     <form method="post" action="/pedidos/nuevo">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Número de pedido</label>
-          <input name="numero" required placeholder="PED-001">
-        </div>
-        <div class="form-group">
-          <label>Fecha</label>
-          <input type="date" name="fecha" required id="fecha-input">
-        </div>
+      <div class="form-group">
+        <label>Folio</label>
+        <input name="numero" id="folio-input" required style="background:#f5f6fa; font-weight:700; color:var(--azul);" readonly>
+        <small class="text-muted">Generado automáticamente.</small>
+      </div>
+      <div class="form-group">
+        <label>Fecha</label>
+        <input type="date" name="fecha" required id="fecha-input">
       </div>
       <div class="form-group">
         <label>Cliente</label>
@@ -85,5 +84,6 @@
 {% block scripts %}
 <script>
 document.getElementById('fecha-input').value = new Date().toISOString().slice(0,10);
+document.getElementById('folio-input').value = '{{ siguiente_folio }}';
 </script>
 {% endblock %}
