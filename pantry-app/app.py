@@ -3,12 +3,49 @@ import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, jsonify, g, flash, send_file
+from functools import wraps
+from flask import Flask, render_template, request, redirect, url_for, jsonify, g, flash, send_file, session
 import io
 import csv
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "citypantry-dev-key-2024")
+
+# ─── AUTH ─────────────────────────────────────────────────────────────────────────
+
+APP_USER     = os.environ.get("APP_USER", "admin")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("autenticado"):
+            return redirect(url_for("login", next=request.path))
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("autenticado"):
+        return redirect(url_for("index"))
+    error = None
+    if request.method == "POST":
+        if not APP_PASSWORD:
+            error = "APP_PASSWORD no configurada en el servidor."
+        elif (request.form.get("usuario") == APP_USER and
+              request.form.get("password") == APP_PASSWORD):
+            session["autenticado"] = True
+            session.permanent = False
+            next_url = request.args.get("next") or url_for("index")
+            return redirect(next_url)
+        else:
+            error = "Usuario o contraseña incorrectos."
+    return render_template("login.html", error=error)
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 DATABASE = os.environ.get("DATABASE_PATH", "pantry.db")
 
@@ -275,6 +312,7 @@ def get_or_create_producto(db, nombre):
 # ─── ROUTES ──────────────────────────────────────────────────────────────────────
 
 @app.route("/")
+@login_required
 def index():
     db = get_db()
     stats = {
@@ -297,6 +335,7 @@ def index():
 # ── FACTURAS / XML ────────────────────────────────────────────────────────────────
 
 @app.route("/facturas")
+@login_required
 def facturas():
     db = get_db()
     rows = db.execute("""
@@ -309,6 +348,7 @@ def facturas():
     return render_template("facturas.html", facturas=rows)
 
 @app.route("/facturas/upload", methods=["GET", "POST"])
+@login_required
 def upload_factura():
     db = get_db()
     if request.method == "POST":
@@ -353,6 +393,7 @@ def upload_factura():
     return render_template("upload.html")
 
 @app.route("/facturas/<int:factura_id>")
+@login_required
 def factura_detail(factura_id):
     db = get_db()
     factura = db.execute("SELECT * FROM facturas WHERE id=?", (factura_id,)).fetchone()
@@ -381,6 +422,7 @@ def factura_detail(factura_id):
     return render_template("factura_detail.html", factura=factura, conceptos=conceptos, pedidos=pedidos)
 
 @app.route("/facturas/concepto/<int:concepto_id>/configurar_producto", methods=["POST"])
+@login_required
 def configurar_producto(concepto_id):
     db = get_db()
     concepto = db.execute("SELECT * FROM conceptos_factura WHERE id=?", (concepto_id,)).fetchone()
@@ -421,6 +463,7 @@ def configurar_producto(concepto_id):
     return redirect(url_for("factura_detail", factura_id=factura_id))
 
 @app.route("/facturas/concepto/<int:concepto_id>/tipo", methods=["POST"])
+@login_required
 def cambiar_tipo_concepto(concepto_id):
     db = get_db()
     tipo = request.form.get("tipo", "producto")
@@ -439,6 +482,7 @@ def cambiar_tipo_concepto(concepto_id):
 # ── PEDIDOS ───────────────────────────────────────────────────────────────────────
 
 @app.route("/pedidos")
+@login_required
 def pedidos():
     db = get_db()
     rows = db.execute("""
@@ -466,6 +510,7 @@ def pedidos():
     return render_template("pedidos.html", pedidos=rows, clientes=clientes, siguiente_folio=siguiente_folio)
 
 @app.route("/pedidos/nuevo", methods=["POST"])
+@login_required
 def nuevo_pedido():
     db = get_db()
     try:
@@ -480,6 +525,7 @@ def nuevo_pedido():
     return redirect(url_for("pedidos"))
 
 @app.route("/pedidos/<int:pedido_id>")
+@login_required
 def pedido_detail(pedido_id):
     db = get_db()
     pedido = db.execute("""
@@ -519,6 +565,7 @@ def pedido_detail(pedido_id):
                            sin_asignar=sin_asignar, productos_cat=productos_cat, totales=totales)
 
 @app.route("/pedidos/<int:pedido_id>/agregar_concepto", methods=["POST"])
+@login_required
 def agregar_concepto(pedido_id):
     db = get_db()
     concepto_id = request.form.get("concepto_id")
@@ -529,9 +576,18 @@ def agregar_concepto(pedido_id):
     if not concepto or not pedido:
         return jsonify({"error": "No encontrado"}), 404
 
-    nombre_custom = request.form.get("nombre_custom", "").strip() or concepto["descripcion"]
+    nombre_custom  = request.form.get("nombre_custom", "").strip() or concepto["descripcion"]
     cantidad_custom = float(request.form.get("cantidad_custom") or concepto["cantidad"])
-    nota_equiv = request.form.get("nota_equivalencia", "").strip()
+    nota_equiv     = request.form.get("nota_equivalencia", "").strip()
+
+    # Costo real unitario: puede venir ajustado del form (ej: equivalencia de presentación)
+    costo_real_form = request.form.get("costo_real_custom", "").strip()
+    if costo_real_form:
+        costo_real_unit = float(costo_real_form)
+    else:
+        # Fallback: dividir total de factura entre cantidad ajustada
+        total_factura = concepto["costo_real_unitario"] * concepto["cantidad"]
+        costo_real_unit = total_factura / cantidad_custom if cantidad_custom else concepto["costo_real_unitario"]
 
     # Si el nombre cambió, renombrar en catálogo automáticamente
     if nombre_custom != concepto["descripcion"]:
@@ -547,11 +603,10 @@ def agregar_concepto(pedido_id):
     precio_base_form = request.form.get("precio_base_custom", "").strip()
     if precio_base_form:
         precio_base = float(precio_base_form)
-        # Guardar en catálogo para futuros pedidos
         db.execute("UPDATE productos SET precio_base=?, actualizado_en=CURRENT_TIMESTAMP WHERE nombre=?",
                    (precio_base, nombre_custom))
     else:
-        precio_base = prod["precio_base"] or concepto["costo_real_unitario"]
+        precio_base = prod["precio_base"] or costo_real_unit
 
     markup = pedido["markup_default"]
 
@@ -560,12 +615,13 @@ def agregar_concepto(pedido_id):
         (pedido_id, concepto_id, producto_nombre, cantidad, precio_base, costo_real, markup_pct, proveedor_nombre, notas)
         VALUES (?,?,?,?,?,?,?,?,?)
     """, (pedido_id, concepto_id, nombre_custom, cantidad_custom,
-          precio_base, concepto["costo_real_unitario"], markup, concepto["proveedor_nombre"], nota_equiv))
+          precio_base, costo_real_unit, markup, concepto["proveedor_nombre"], nota_equiv))
     db.commit()
     flash(f"Producto '{nombre_custom}' agregado al pedido", "success")
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
 @app.route("/pedidos/<int:pedido_id>/agregar_manual", methods=["POST"])
+@login_required
 def agregar_manual(pedido_id):
     db = get_db()
     pedido = db.execute("SELECT p.*, c.markup_default FROM pedidos p JOIN clientes c ON p.cliente_id=c.id WHERE p.id=?",
@@ -586,6 +642,7 @@ def agregar_manual(pedido_id):
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
 @app.route("/pedidos/<int:pedido_id>/item/<int:item_id>/editar", methods=["POST"])
+@login_required
 def editar_item(pedido_id, item_id):
     db = get_db()
     db.execute("""
@@ -601,6 +658,7 @@ def editar_item(pedido_id, item_id):
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
 @app.route("/pedidos/<int:pedido_id>/item/<int:item_id>/eliminar", methods=["POST"])
+@login_required
 def eliminar_item(pedido_id, item_id):
     db = get_db()
     db.execute("DELETE FROM pedido_items WHERE id=? AND pedido_id=?", (item_id, pedido_id))
@@ -608,6 +666,7 @@ def eliminar_item(pedido_id, item_id):
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
 @app.route("/pedidos/<int:pedido_id>/cerrar", methods=["POST"])
+@login_required
 def cerrar_pedido(pedido_id):
     db = get_db()
     db.execute("UPDATE pedidos SET status='cerrado' WHERE id=?", (pedido_id,))
@@ -616,6 +675,7 @@ def cerrar_pedido(pedido_id):
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
 @app.route("/pedidos/<int:pedido_id>/reabrir", methods=["POST"])
+@login_required
 def reabrir_pedido(pedido_id):
     db = get_db()
     db.execute("UPDATE pedidos SET status='abierto' WHERE id=?", (pedido_id,))
@@ -624,6 +684,7 @@ def reabrir_pedido(pedido_id):
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
 @app.route("/pedidos/<int:pedido_id>/envio", methods=["POST"])
+@login_required
 def actualizar_envio(pedido_id):
     db = get_db()
     costo_envio = float(request.form.get("costo_envio", 0) or 0)
@@ -633,6 +694,7 @@ def actualizar_envio(pedido_id):
     return redirect(url_for("pedido_detail", pedido_id=pedido_id))
 
 @app.route("/pedidos/<int:pedido_id>/remision")
+@login_required
 def remision_pedido(pedido_id):
     db = get_db()
     pedido = db.execute("""
@@ -651,6 +713,7 @@ def remision_pedido(pedido_id):
     return render_template("remision.html", pedido=pedido, items=items)
 
 @app.route("/pedidos/<int:pedido_id>/exportar")
+@login_required
 def exportar_pedido(pedido_id):
     db = get_db()
     pedido = db.execute("""
@@ -704,6 +767,7 @@ def exportar_pedido(pedido_id):
 # ── CLIENTES ──────────────────────────────────────────────────────────────────────
 
 @app.route("/clientes")
+@login_required
 def clientes():
     db = get_db()
     rows = db.execute("""
@@ -717,6 +781,7 @@ def clientes():
     return render_template("clientes.html", clientes=rows)
 
 @app.route("/clientes/nuevo", methods=["POST"])
+@login_required
 def nuevo_cliente():
     db = get_db()
     try:
@@ -732,6 +797,7 @@ def nuevo_cliente():
     return redirect(url_for("clientes"))
 
 @app.route("/clientes/<int:cliente_id>/editar", methods=["POST"])
+@login_required
 def editar_cliente(cliente_id):
     db = get_db()
     db.execute("""UPDATE clientes SET markup_default=?, notas=?, alegra_codigo=?, costo_envio_default=? WHERE id=?""",
@@ -747,6 +813,7 @@ def editar_cliente(cliente_id):
 # ── CATÁLOGO ──────────────────────────────────────────────────────────────────────
 
 @app.route("/catalogo")
+@login_required
 def catalogo():
     db = get_db()
     q = request.args.get("q", "")
@@ -767,6 +834,7 @@ def catalogo():
     return render_template("catalogo.html", productos=rows, q=q)
 
 @app.route("/catalogo/<int:producto_id>/editar", methods=["POST"])
+@login_required
 def editar_producto(producto_id):
     db = get_db()
     nombre_nuevo = request.form.get("nombre", "").strip()
@@ -808,6 +876,7 @@ def editar_producto(producto_id):
 # ── CONSULTA EN CAMPO ─────────────────────────────────────────────────────────────
 
 @app.route("/consulta")
+@login_required
 def consulta():
     db = get_db()
     q = request.args.get("q", "")
@@ -833,6 +902,7 @@ def consulta():
 # ── GASTOS OPERATIVOS ─────────────────────────────────────────────────────────────
 
 @app.route("/gastos")
+@login_required
 def gastos_operativos():
     db = get_db()
     rows = db.execute("""
@@ -853,6 +923,7 @@ def gastos_operativos():
     return render_template("gastos.html", gastos=rows, resumen=resumen)
 
 @app.route("/reporte")
+@login_required
 def reporte():
     db = get_db()
     clientes = db.execute("SELECT * FROM clientes ORDER BY nombre").fetchall()
@@ -946,6 +1017,7 @@ def reporte():
                                     "fecha_ini": fecha_ini, "fecha_fin": fecha_fin})
 
 @app.route("/api/productos/buscar")
+@login_required
 def api_buscar_productos():
     db = get_db()
     q = request.args.get("q", "")
