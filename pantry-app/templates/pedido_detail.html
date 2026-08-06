@@ -160,29 +160,32 @@
     <div class="modal-title">Asignar producto al pedido</div>
     <form method="post" id="form-asignar" action="">
       <input type="hidden" name="concepto_id" id="asignar-concepto-id">
+      <input type="hidden" id="asignar-costo-total-factura">
       <div class="form-group">
         <label>Nombre del producto</label>
         <input name="nombre_custom" id="asignar-nombre" required placeholder="Nombre que aparecerá en el pedido">
-        <small class="text-muted">Puedes cambiar el nombre del XML por uno estándar de Alegra.</small>
       </div>
       <div class="form-row">
         <div class="form-group">
           <label>Cantidad</label>
-          <input type="number" name="cantidad_custom" id="asignar-cantidad" step="0.01" min="0.01" required>
+          <input type="number" name="cantidad_custom" id="asignar-cantidad" step="0.01" min="0.01" required onchange="recalcAsignar()">
         </div>
         <div class="form-group">
-          <label>Costo real unit.</label>
-          <input type="number" id="asignar-costo" step="0.01" disabled style="background:#f5f6fa;">
+          <label>Costo real unitario</label>
+          <input type="number" name="costo_real_custom" id="asignar-costo" step="0.01" min="0" required>
+          <small class="text-muted" id="asignar-ref-total"></small>
         </div>
       </div>
-      <div class="form-group">
-        <label>Precio base unitario</label>
-        <input type="number" name="precio_base_custom" id="asignar-precio-base" step="0.01" min="0" placeholder="0.00">
-        <small class="text-muted">Se guarda en catálogo. Déjalo vacío si ya está registrado.</small>
-      </div>
-      <div class="form-group">
-        <label>Nota de equivalencia (opcional)</label>
-        <input name="nota_equivalencia" placeholder="Ej: 3x2 Julio Regalado, presentación 1L vs 500ml...">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Precio base unitario</label>
+          <input type="number" name="precio_base_custom" id="asignar-precio-base" step="0.01" min="0" placeholder="0.00">
+          <small class="text-muted">Se guarda en catálogo. Déjalo vacío si ya está registrado.</small>
+        </div>
+        <div class="form-group">
+          <label>Nota de equivalencia (opcional)</label>
+          <input name="nota_equivalencia" placeholder="Ej: 15 bolsas de 1 pieza en factura">
+        </div>
       </div>
       <div class="gap">
         <button class="btn btn-primary" type="submit">Agregar al pedido</button>
@@ -288,13 +291,24 @@ if (inputNombre) {
 }
 
 function openAsignar(conceptoId, descripcion, cantidad, costoReal, precioBase) {
+  const costoTotal = cantidad * costoReal;
   document.getElementById('asignar-concepto-id').value = conceptoId;
+  document.getElementById('asignar-costo-total-factura').value = costoTotal.toFixed(2);
   document.getElementById('asignar-nombre').value = descripcion;
   document.getElementById('asignar-cantidad').value = cantidad;
   document.getElementById('asignar-costo').value = costoReal.toFixed(2);
+  document.getElementById('asignar-ref-total').textContent = `Costo total factura: $${costoTotal.toFixed(2)}`;
   document.getElementById('asignar-precio-base').value = precioBase ? precioBase.toFixed(2) : '';
   document.getElementById('form-asignar').action = `/pedidos/{{ pedido.id }}/agregar_concepto`;
   openModal('modal-asignar');
+}
+
+function recalcAsignar() {
+  const costoTotal = parseFloat(document.getElementById('asignar-costo-total-factura').value) || 0;
+  const cantidad   = parseFloat(document.getElementById('asignar-cantidad').value) || 1;
+  if (costoTotal > 0) {
+    document.getElementById('asignar-costo').value = (costoTotal / cantidad).toFixed(4);
+  }
 }
 
 function openEditar(itemId, nombre, cantidad, precioBase, markupPct, notas) {
