@@ -130,6 +130,9 @@
   <a href="/reporte" {% if '/reporte' in request.path %}class="active"{% endif %}>📊 Reporte</a>
   <a href="/gastos" {% if '/gastos' in request.path %}class="active"{% endif %}>💼 Gastos</a>
   <a href="/clientes" {% if '/clientes' in request.path %}class="active"{% endif %}>Clientes</a>
+  <form method="post" action="/logout" style="margin:0">
+    <button type="submit" style="background:rgba(255,255,255,.15); border:none; color:rgba(255,255,255,.85); font-size:.88rem; padding:.4rem .6rem; border-radius:6px; cursor:pointer; font-family:inherit;">Salir</button>
+  </form>
 </nav>
 <div class="container">
   {% with messages = get_flashed_messages(with_categories=true) %}
