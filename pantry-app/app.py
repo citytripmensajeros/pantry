@@ -890,13 +890,13 @@ def consulta():
                    ped.numero as pedido_numero, c.nombre as cliente_nombre
             FROM conceptos_factura cf
             JOIN facturas f ON cf.factura_id = f.id
-            JOIN productos pr ON pr.nombre = cf.descripcion
+            LEFT JOIN productos pr ON (pr.nombre = cf.descripcion OR pr.descripcion_xml = cf.descripcion)
             LEFT JOIN pedido_items pi ON pi.concepto_id = cf.id
             LEFT JOIN pedidos ped ON pi.pedido_id = ped.id
             LEFT JOIN clientes c ON ped.cliente_id = c.id
-            WHERE cf.descripcion LIKE ?
+            WHERE (cf.descripcion LIKE ? OR pr.nombre LIKE ?)
             ORDER BY f.fecha DESC
-        """, (f"%{q}%",)).fetchall()
+        """, (f"%{q}%", f"%{q}%")).fetchall()
     return render_template("consulta.html", q=q, resultados=resultados)
 
 # ── GASTOS OPERATIVOS ─────────────────────────────────────────────────────────────
